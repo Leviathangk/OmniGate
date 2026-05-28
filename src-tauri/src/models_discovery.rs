@@ -161,6 +161,20 @@ pub fn infer_capabilities(model_id: &str) -> ModelCapabilities {
         };
     }
 
+    // ---- GPT-5 系列 ----
+    if id.starts_with("gpt-5") {
+        let reasoning = id.contains("reasoning") || id.contains("think");
+        let vision = !id.contains("codex") && !id.contains("embed");
+        let tools = !id.contains("embed");
+        return ModelCapabilities {
+            reasoning,
+            vision,
+            tools,
+            long_context: true,
+            ..Default::default()
+        };
+    }
+
     // ---- o 系列（OpenAI Reasoning 模型）----
     if id.starts_with("o1-") || id == "o1" {
         return ModelCapabilities {
@@ -294,9 +308,9 @@ fn build_models_endpoint(api_url: &str) -> String {
 
 /// 根据协议类型拉取模型列表。
 ///
-/// - protocol = "claude"           → 使用 x-api-key / anthropic-version 头，解析 Claude 格式
-/// - protocol = "codex_responses"  → 使用 Bearer token，解析 OpenAI 格式
-/// - protocol = "codex_chat"       → 使用 Bearer token，解析 OpenAI 格式
+/// - protocol = "claude"           → 使用 x-api-key / anthropic-version 头，解析 Claude 格式，/v1/models
+/// - protocol = "codex_responses"  → 使用 Bearer token，解析 OpenAI 格式，/v1/models
+/// - protocol = "codex_chat"       → 使用 Bearer token，解析 OpenAI 格式，/models（无 /v1）
 pub async fn fetch_models_by_protocol(
     api_url: &str,
     api_key: &str,
@@ -305,9 +319,8 @@ pub async fn fetch_models_by_protocol(
 ) -> Result<Vec<DiscoveredModel>, String> {
     match protocol {
         "claude" => fetch_models_claude(api_url, api_key, provider_id).await,
-        "codex_responses" | "codex_chat" => {
-            fetch_models_openai(api_url, api_key, provider_id).await
-        }
+        "codex_responses" => fetch_models_openai(api_url, api_key, provider_id, true).await,
+        "codex_chat"      => fetch_models_openai(api_url, api_key, provider_id, false).await,
         other => Err(format!("不支持的协议: {}", other)),
     }
 }
@@ -375,13 +388,19 @@ async fn fetch_models_claude(
 // OpenAI 兼容协议实现（codex_responses / codex_chat）
 // ============================================================================
 
-/// 调用 OpenAI 兼容接口的 /v1/models，返回解析并推断能力后的模型列表
+/// 调用 OpenAI 兼容接口的 /models 或 /v1/models，返回解析并推断能力后的模型列表
 pub async fn fetch_models_openai(
     api_url: &str,
     api_key: &str,
     provider_id: &str,
+    use_v1: bool,
 ) -> Result<Vec<DiscoveredModel>, String> {
-    let endpoint = build_models_endpoint(api_url);
+    let trimmed = api_url.trim_end_matches('/');
+    let endpoint = if use_v1 {
+        build_models_endpoint(trimmed)          // → /v1/models
+    } else {
+        format!("{}/models", trimmed)           // → /models（codex_chat）
+    };
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))

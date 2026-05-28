@@ -15,6 +15,7 @@ import {
   Search,
   Plus,
   Check,
+  ChevronRight,
   Trash2,
   Database,
   Info,
@@ -138,20 +139,25 @@ const getUrlPreview = (url: string, protocol: string) => {
   if (!url.trim()) return { discover: "-", forward: "-" };
   const trimmed = url.trim().replace(/\/+$/, ""); // 去除末尾斜杠
   
-  // 拼接逻辑完全对照后端：若已有 /v1 则直接追加，否则补上 /v1
+  // discover 端点：claude/codex_responses 拼 /v1/models；codex_chat 直接拼 /models
   const base = trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
-  
-  let forwardPath = "/chat/completions";
+
+  let discoverUrl: string;
+  let forwardUrl: string;
+
   if (protocol === "claude") {
-    forwardPath = "/messages";
+    discoverUrl = `${base}/models`;
+    forwardUrl  = `${base}/messages`;
   } else if (protocol === "codex_responses") {
-    forwardPath = "/responses";
+    discoverUrl = `${base}/models`;
+    forwardUrl  = `${trimmed}/responses`;
+  } else {
+    // codex_chat
+    discoverUrl = `${trimmed}/models`;
+    forwardUrl  = `${trimmed}/chat/completions`;
   }
-  
-  return {
-    discover: `${base}/models`,
-    forward: `${base}${forwardPath}`
-  };
+
+  return { discover: discoverUrl, forward: forwardUrl };
 };
 
 interface SelectOption {
@@ -587,6 +593,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [darkMode, setDarkMode] = useState<boolean>(true);
   const [statsPeriod, setStatsPeriod] = useState<string>("7");
+  const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
   
   // 核心数据状态
   const [overviewData, setOverviewData] = useState<UsageOverview>({
@@ -654,12 +661,17 @@ function App() {
   const [clientSubTab, setClientSubTab] = useState<string>("claude");
   const [settingsSubTab, setSettingsSubTab] = useState<string>("general");
   const [showAddProviderModal, setShowAddProviderModal] = useState<boolean>(false);
+  const [wizardStep, setWizardStep] = useState<number>(1);
   
   // 添加供应商向导状态
   const [newProvName, setNewProvName] = useState<string>("");
   const [newProvUrl, setNewProvUrl] = useState<string>("");
   const [newProvKey, setNewProvKey] = useState<string>("");
   const [newProvProtocol, setNewProvProtocol] = useState<string>("claude");
+  const [isFetchingModels, setIsFetchingModels] = useState<boolean>(false);
+  const [fetchedModels, setFetchedModels] = useState<Model[]>([]);
+  // 向导中已选中（要添加）的模型名称列表
+  const [selectedFetchedModelNames, setSelectedFetchedModelNames] = useState<string[]>([]);
   
   // 新建 MCP 状态
   const [newMcpName, setNewMcpName] = useState<string>("");
@@ -689,6 +701,9 @@ function App() {
   const [pullSearchQuery, setPullSearchQuery] = useState<string>("");
   const [pullFeatureTab, setPullFeatureTab] = useState<string>("all");
 
+  // 新增的向导模型选择搜索与标签过滤状态
+  const [wizardSearchQuery, setWizardSearchQuery] = useState<string>("");
+  const [wizardFeatureTab, setWizardFeatureTab] = useState<string>("all");
 
   // ============================================================================
   // 数据获取与同步
@@ -846,38 +861,11 @@ function App() {
     setSkills(prev => prev.map(s => s.id === id ? { ...s, is_active: !s.is_active } : s));
   };
 
-  // 直接创建并保存供应商配置
-  const handleSaveProviderOnly = async () => {
-    if (!newProvName.trim()) {
-      alert("请输入供应商名称");
-      return;
-    }
-    try {
-      await invoke<string>("add_provider", {
-        name: newProvName,
-        apiUrl: newProvUrl,
-        apiKey: newProvKey,
-        protocol: newProvProtocol,
-      });
-      await loadData();
-      setShowAddProviderModal(false);
-      setNewProvName(""); 
-      setNewProvUrl(""); 
-      setNewProvKey(""); 
-      setNewProvProtocol("claude");
-    } catch (err) {
-      alert("保存供应商失败: " + err);
-    }
-  };
-
-  // 详情界面：手动添加单个模型
+  // 详情：手动添加单个模型
   const handleManualAddModel = async () => {
     if (!selectedProviderForDetails) return;
-    if (!manualModelName.trim()) {
-      alert("请输入要添加的模型 ID");
-      return;
-    }
     const name = manualModelName.trim();
+    if (!name) { alert("请输入模型 ID"); return; }
     try {
       await invoke("add_models_to_provider", {
         providerId: selectedProviderForDetails.id,
@@ -892,7 +880,86 @@ function App() {
     }
   };
 
+  // 向导：从上游拉取模型列表（调用真实 /v1/models API）
+  const handleFetchModels = async () => {
+    if (!newProvUrl.trim() || !newProvKey.trim()) {
+      alert("请填写 API URL 和 API Key");
+      return;
+    }
+    setFetchModelsError(null);
+    setIsFetchingModels(true);
+    setWizardStep(2);
+    try {
+      const result = await invoke<Model[]>("discover_models", {
+        apiUrl: newProvUrl,
+        apiKey: newProvKey,
+        protocol: newProvProtocol,
+        providerId: "__wizard_preview__",
+      });
+      setFetchedModels(result);
+      // 默认不选中任何，由用户点 + 添加
+      setSelectedFetchedModelNames([]);
+      setIsFetchingModels(false);
+      setWizardStep(3);
+    } catch (err) {
+      console.error("Discover models failed:", err);
+      setFetchModelsError(String(err));
+      setIsFetchingModels(false);
+    }
+  };
 
+  // 向导：跳过模型拉取，直接创建供应商（提前结束）
+  const handleSaveProviderOnly = async () => {
+    if (!newProvName.trim()) {
+      alert("请输入供应商名称");
+      return;
+    }
+    try {
+      await invoke<string>("add_provider", {
+        name: newProvName,
+        apiUrl: newProvUrl,
+        apiKey: newProvKey,
+        protocol: newProvProtocol,
+      });
+      await loadData();
+      setShowAddProviderModal(false);
+      setWizardStep(1);
+      setFetchModelsError(null);
+      setNewProvName(""); setNewProvUrl(""); setNewProvKey(""); setNewProvProtocol("claude");
+      setFetchedModels([]); setSelectedFetchedModelNames([]);
+    } catch (err) {
+      alert("保存供应商失败: " + err);
+    }
+  };
+
+  // 向导：提交供应商 + 保存已选模型
+  const handleAddProviderSubmit = async () => {
+    if (!newProvName.trim()) { alert("请输入供应商名称"); return; }
+    if (selectedFetchedModelNames.length === 0) { alert("请至少选择一个模型"); return; }
+    try {
+      // 1. 先创建供应商，拿到新 ID
+      const newId = await invoke<string>("add_provider", {
+        name: newProvName,
+        apiUrl: newProvUrl,
+        apiKey: newProvKey,
+        protocol: newProvProtocol,
+      });
+      // 2. 批量保存已选模型
+      await invoke<number>("add_models_to_provider", {
+        providerId: newId,
+        modelNames: selectedFetchedModelNames,
+      });
+      // 3. 刷新数据
+      await loadData();
+      // 4. 重置向导
+      setShowAddProviderModal(false);
+      setWizardStep(1);
+      setNewProvName(""); setNewProvUrl(""); setNewProvKey(""); setNewProvProtocol("claude");
+      setFetchedModels([]); setSelectedFetchedModelNames([]);
+    } catch (err) {
+      alert("保存失败: " + err);
+    }
+  };
 
 
 
@@ -1234,7 +1301,7 @@ function App() {
                       <h3>快速快捷操作</h3>
                     </div>
                     <div className="quick-actions">
-                      <button className="action-btn" onClick={() => { setShowAddProviderModal(true); }}>
+                      <button className="action-btn" onClick={() => { setShowAddProviderModal(true); setWizardStep(1); }}>
                         <span className="action-icon" style={{ color: "hsl(var(--primary))" }}><Plus size={16} /></span>
                         <span>添加供应商配置</span>
                       </button>
@@ -1300,7 +1367,7 @@ function App() {
             <div className="panel-card">
               <div className="card-header-row">
                 <h3>已接管的 AI 供应商列表</h3>
-                <button className="btn-primary" onClick={() => { setShowAddProviderModal(true); }}><Plus size={16} /> 添加新供应商</button>
+                <button className="btn-primary" onClick={() => { setShowAddProviderModal(true); setWizardStep(1); }}><Plus size={16} /> 添加新供应商</button>
               </div>
 
               <div className="responsive-table-container">
@@ -1905,14 +1972,14 @@ function App() {
               </button>
             </header>
 
-            <div className="modal-body-section" style={{ display: "flex", flexDirection: "column", gap: "20px", overflowY: "auto", padding: "20px 24px", flex: 1 }}>
+            <div className="modal-body-section" style={{ display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", padding: "14px 20px", flex: 1 }}>
               
               {/* ---- 上半：基本信息 ---- */}
-              <div style={{ backgroundColor: "rgba(255, 255, 255, 0.02)", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.05)", padding: "16px 20px" }}>
-                <h4 style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: "600", marginBottom: "14px", textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Info size={13} /> 基本信息
+              <div style={{ backgroundColor: "rgba(255, 255, 255, 0.02)", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.05)", padding: "12px 16px" }}>
+                <h4 style={{ fontSize: "0.76rem", color: "var(--text-secondary)", fontWeight: "600", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Info size={12} /> 基本信息
                 </h4>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                   <div className="form-group">
                     <label>供应商名称</label>
                     <input 
@@ -1991,99 +2058,84 @@ function App() {
                 });
 
                 return (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "14px", flex: 1 }}>
-                    {/* 搜索 + 数量 + 拉取按钮栏 */}
-                    <div style={{ display: "flex", gap: "12px", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
+                    {/* 工具栏：搜索 + 手动添加 + 数量 + 拉取 */}
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                       {/* 搜索框 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, height: "40px", borderRadius: "10px", border: "1px solid hsl(var(--border-color))", backgroundColor: "hsl(var(--bg-app))", padding: "0 14px", position: "relative" }}>
-                        <Search size={14} style={{ color: "hsl(var(--text-secondary))", position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)" }} />
+                      <div style={{ display: "flex", alignItems: "center", flex: 1, height: "34px", borderRadius: "8px", border: "1px solid hsl(var(--border-color))", backgroundColor: "hsl(var(--bg-app))", padding: "0 10px", position: "relative" }}>
+                        <Search size={13} style={{ color: "hsl(var(--text-secondary))", position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)" }} />
                         <input 
-                          placeholder="搜索已添加的模型 ID 或名称" 
+                          placeholder="搜索模型 ID 或名称" 
                           value={modelsSearchQuery}
                           onChange={(e) => setModelsSearchQuery(e.target.value)}
-                          style={{ background: "transparent", border: "none", color: "hsl(var(--text-primary))", fontSize: "0.85rem", outline: "none", width: "100%", paddingLeft: "24px" }}
+                          style={{ background: "transparent", border: "none", color: "hsl(var(--text-primary))", fontSize: "0.82rem", outline: "none", width: "100%", paddingLeft: "22px" }}
                         />
                       </div>
 
-                      {/* 模型数量统计 */}
-                      <div style={{ fontSize: "0.86rem", color: "hsl(var(--text-secondary))", fontWeight: 500, whiteSpace: "nowrap" }}>
-                        共 <strong style={{ color: "hsl(var(--primary))", fontSize: "0.95rem" }}>{filteredDetailsModels.length}</strong> 个模型
-                      </div>
-
-                      {/* 手动添加输入框 + 按钮 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <input 
-                          placeholder="手动输入模型 ID (如 gpt-4)" 
+                      {/* 手动输入 + 添加按钮 */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <input
+                          placeholder="手动输入模型 ID"
                           value={manualModelName}
                           onChange={(e) => setManualModelName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleManualAddModel(); }}
                           style={{
-                            height: "40px",
-                            width: "180px",
-                            borderRadius: "10px",
+                            height: "34px", width: "160px", borderRadius: "8px",
                             border: "1px solid hsl(var(--border-color))",
                             backgroundColor: "hsl(var(--bg-app))",
                             color: "hsl(var(--text-primary))",
-                            fontSize: "0.82rem",
-                            outline: "none",
-                            padding: "0 12px",
-                            transition: "all 0.2s"
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              handleManualAddModel();
-                            }
+                            fontSize: "0.8rem", outline: "none", padding: "0 10px"
                           }}
                         />
                         <button
                           onClick={handleManualAddModel}
+                          title="手动添加模型"
                           style={{
-                            height: "40px",
-                            borderRadius: "10px",
-                            fontSize: "0.82rem",
-                            fontWeight: 600,
-                            padding: "0 14px",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            cursor: "pointer",
-                            border: "1px solid hsl(var(--primary) / 0.15)",
-                            backgroundColor: "hsl(var(--primary) / 0.06)",
+                            height: "34px", padding: "0 12px", borderRadius: "8px",
+                            border: "1px solid hsl(var(--primary) / 0.3)",
+                            backgroundColor: "hsl(var(--primary) / 0.08)",
                             color: "hsl(var(--primary))",
-                            transition: "all 0.2s",
-                            whiteSpace: "nowrap"
+                            fontSize: "0.8rem", fontWeight: 600,
+                            display: "inline-flex", alignItems: "center", gap: "4px",
+                            cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap"
                           }}
-                          onMouseOver={(e) => { e.currentTarget.style.backgroundColor = "hsl(var(--primary) / 0.12)"; e.currentTarget.style.transform = "scale(1.03)"; }}
-                          onMouseOut={(e) => { e.currentTarget.style.backgroundColor = "hsl(var(--primary) / 0.06)"; e.currentTarget.style.transform = "scale(1)"; }}
+                          onMouseOver={(e) => { e.currentTarget.style.backgroundColor = "hsl(var(--primary) / 0.15)"; }}
+                          onMouseOut={(e) => { e.currentTarget.style.backgroundColor = "hsl(var(--primary) / 0.08)"; }}
                         >
-                          <Plus size={14} />
+                          <Plus size={13} />
                           <span>手动添加</span>
                         </button>
+                      </div>
+
+                      {/* 模型数量统计 */}
+                      <div style={{ fontSize: "0.8rem", color: "hsl(var(--text-secondary))", fontWeight: 500, whiteSpace: "nowrap" }}>
+                        共 <strong style={{ color: "hsl(var(--primary))" }}>{filteredDetailsModels.length}</strong> 个
                       </div>
 
                       {/* 拉取模型按钮 */}
                       <button
                         onClick={handleOpenPullModal}
                         style={{ 
-                          height: "40px", 
-                          borderRadius: "10px", 
-                          fontSize: "0.86rem",
+                          height: "34px", 
+                          borderRadius: "8px", 
+                          fontSize: "0.82rem",
                           fontWeight: 600,
-                          padding: "0 20px",
+                          padding: "0 14px",
                           display: "inline-flex", 
                           alignItems: "center", 
-                          gap: "8px",
+                          gap: "6px",
                           cursor: "pointer",
                           border: "none",
                           backgroundColor: "hsl(var(--primary))",
                           color: "#fff",
-                          boxShadow: "0 4px 12px hsl(var(--primary) / 0.15)",
-                          transition: "all 0.2s",
+                          boxShadow: "0 3px 8px hsl(var(--primary) / 0.2)",
+                          transition: "all 0.15s",
                           whiteSpace: "nowrap"
                         }}
-                        onMouseOver={(e) => { e.currentTarget.style.backgroundColor = "hsl(var(--primary) / 0.9)"; e.currentTarget.style.transform = "scale(1.03)"; }}
-                        onMouseOut={(e) => { e.currentTarget.style.backgroundColor = "hsl(var(--primary))"; e.currentTarget.style.transform = "scale(1)"; }}
+                        onMouseOver={(e) => { e.currentTarget.style.opacity = "0.88"; }}
+                        onMouseOut={(e) => { e.currentTarget.style.opacity = "1"; }}
                       >
-                        <Plus size={15} />
+                        <Plus size={13} />
                         <span>拉取模型</span>
                       </button>
                     </div>
@@ -2257,81 +2309,256 @@ function App() {
 
       {showAddProviderModal && (
         <div className="modal-overlay">
-          <div className="modal-content-window" style={{ maxWidth: "680px", width: "90%" }}>
+          <div className="modal-content-window">
             <header className="modal-header-section">
-              <h3 style={{ display: "flex", alignItems: "center", gap: "8px", margin: 0 }}><Sparkles size={18} style={{ color: "hsl(var(--primary))" }} /> 新增大模型供应商</h3>
+              <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}><Sparkles size={18} style={{ color: "hsl(var(--primary))" }} /> 新增大模型供应商配置</h3>
               <button className="modal-close-btn" onClick={() => setShowAddProviderModal(false)}>✕</button>
             </header>
 
-            <div className="modal-body-section" style={{ display: "flex", flexDirection: "column", gap: "20px", padding: "20px 24px" }}>
-              <div className="wizard-layout" style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "24px" }}>
-                {/* 左侧：表单配置 */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                  <div className="form-group">
-                    <label>供应商名称</label>
-                    <input placeholder="e.g. Anthropic Claude" value={newProvName} onChange={(e) => setNewProvName(e.target.value)} />
+            <div className="modal-body-section">
+              {/* 向导进度条 */}
+              <div className="wizard-stepper">
+                <div className={`step-item ${wizardStep === 1 ? "active" : ""} ${wizardStep > 1 ? "completed" : ""}`}>
+                  <span className="step-num">{wizardStep > 1 ? "✓" : "1"}</span>
+                  <span>基本信息</span>
+                </div>
+                <div className={`step-item ${wizardStep === 2 ? "active" : ""} ${wizardStep > 2 ? "completed" : ""}`}>
+                  <span className="step-num">{wizardStep > 2 ? "✓" : "2"}</span>
+                  <span>获取模型</span>
+                </div>
+                <div className={`step-item ${wizardStep === 3 ? "active" : ""} ${wizardStep > 3 ? "completed" : ""}`}>
+                  <span className="step-num">{wizardStep > 3 ? "✓" : "3"}</span>
+                  <span>选择模型</span>
+                </div>
+                <div className={`step-item ${wizardStep === 4 ? "active" : ""}`}>
+                  <span className="step-num">4</span>
+                  <span>完成</span>
+                </div>
+              </div>
+
+              {/* 步骤 1：录入 API 配置与协议选择 */}
+              {wizardStep === 1 && (
+                <div className="wizard-layout">
+                  <div className="left-step-col">
+                    <div className="form-group">
+                      <label>供应商名称</label>
+                      <input placeholder="e.g. Anthropic Claude" value={newProvName} onChange={(e) => setNewProvName(e.target.value)} />
+                    </div>
+
+                    <div className="form-group">
+                      <label>API 基础地址 (API URL)</label>
+                      <input placeholder="e.g. https://api.anthropic.com" value={newProvUrl} onChange={(e) => setNewProvUrl(e.target.value)} style={{ marginBottom: "4px" }} />
+                      {newProvUrl.trim() && (() => {
+                        const { discover, forward } = getUrlPreview(newProvUrl, newProvProtocol);
+                        return (
+                          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "2px", paddingLeft: "4px", marginTop: "2px", lineHeight: "1.4" }}>
+                            <div><span style={{ opacity: 0.6 }}>发现端点：</span><code style={{ fontSize: "0.68rem", color: "var(--text-secondary)" }}>{discover}</code></div>
+                            <div><span style={{ opacity: 0.6 }}>对话转发：</span><code style={{ fontSize: "0.68rem", color: "var(--text-secondary)" }}>{forward}</code></div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="form-group">
+                      <label>API 授权密钥 (API Key)</label>
+                      <input type="password" placeholder="sk-..." value={newProvKey} onChange={(e) => setNewProvKey(e.target.value)} />
+                    </div>
                   </div>
 
-                  <div className="form-group">
-                    <label>API 基础地址 (API URL)</label>
-                    <input placeholder="e.g. https://api.anthropic.com" value={newProvUrl} onChange={(e) => setNewProvUrl(e.target.value)} style={{ marginBottom: "4px" }} />
-                    {newProvUrl.trim() && (() => {
-                      const { discover, forward } = getUrlPreview(newProvUrl, newProvProtocol);
-                      return (
-                        <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "2px", paddingLeft: "4px", marginTop: "2px", lineHeight: "1.4" }}>
-                          <div><span style={{ opacity: 0.6 }}>发现端点：</span><code style={{ fontSize: "0.68rem", color: "var(--text-secondary)" }}>{discover}</code></div>
-                          <div><span style={{ opacity: 0.6 }}>对话转发：</span><code style={{ fontSize: "0.68rem", color: "var(--text-secondary)" }}>{forward}</code></div>
+                  <div className="right-step-col">
+                    <label style={{ fontSize: "0.8rem", fontWeight: "600", color: "hsl(var(--text-secondary))", display: "block", marginBottom: "8px" }}>协议类型选择</label>
+                    <div className="protocol-grid">
+                      <div className={`protocol-card ${newProvProtocol === "claude" ? "active" : ""}`} onClick={() => setNewProvProtocol("claude")} style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                        <span style={{ fontSize: "1.3rem", display: "flex", alignItems: "center", color: "hsl(var(--primary))" }}><Activity size={18} /></span>
+                        <div>
+                          <h4>Claude 协议</h4>
+                          <p>协议组：兼容 Anthropic 原生消息请求格式</p>
                         </div>
-                      );
-                    })()}
-                  </div>
-
-                  <div className="form-group">
-                    <label>API 授权密钥 (API Key)</label>
-                    <input type="password" placeholder="sk-..." value={newProvKey} onChange={(e) => setNewProvKey(e.target.value)} />
-                  </div>
-                </div>
-
-                {/* 右侧：协议选择 */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  <label style={{ fontSize: "0.8rem", fontWeight: "600", color: "hsl(var(--text-secondary))", display: "block" }}>协议类型选择</label>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
-                    <div className={`protocol-card ${newProvProtocol === "claude" ? "active" : ""}`} onClick={() => setNewProvProtocol("claude")} style={{ display: "flex", alignItems: "center", gap: "14px", padding: "10px 14px", borderRadius: "10px", border: "1px solid hsl(var(--border-color))", cursor: "pointer", backgroundColor: newProvProtocol === "claude" ? "hsl(var(--primary) / 0.05)" : "hsl(var(--bg-app))", borderColor: newProvProtocol === "claude" ? "hsl(var(--primary))" : "hsl(var(--border-color))", transition: "all 0.2s" }}>
-                      <span style={{ fontSize: "1.3rem", display: "flex", alignItems: "center", color: "hsl(var(--primary))" }}><Activity size={18} /></span>
-                      <div>
-                        <h4 style={{ margin: 0, fontSize: "0.85rem", fontWeight: 600 }}>Claude 协议</h4>
-                        <p style={{ margin: "2px 0 0", fontSize: "0.72rem", color: "var(--text-muted)" }}>兼容 Anthropic 原生消息请求格式</p>
                       </div>
-                    </div>
-                    
-                    <div className={`protocol-card ${newProvProtocol === "codex_responses" ? "active" : ""}`} onClick={() => setNewProvProtocol("codex_responses")} style={{ display: "flex", alignItems: "center", gap: "14px", padding: "10px 14px", borderRadius: "10px", border: "1px solid hsl(var(--border-color))", cursor: "pointer", backgroundColor: newProvProtocol === "codex_responses" ? "hsl(var(--secondary) / 0.05)" : "hsl(var(--bg-app))", borderColor: newProvProtocol === "codex_responses" ? "hsl(var(--secondary))" : "hsl(var(--border-color))", transition: "all 0.2s" }}>
-                      <span style={{ fontSize: "1.3rem", display: "flex", alignItems: "center", color: "hsl(var(--secondary))" }}><Terminal size={18} /></span>
-                      <div>
-                        <h4 style={{ margin: 0, fontSize: "0.85rem", fontWeight: 600 }}>Codex /responses 协议</h4>
-                        <p style={{ margin: "2px 0 0", fontSize: "0.72rem", color: "var(--text-muted)" }}>兼容 Copilot Responses 物理转发</p>
+                      <div className={`protocol-card ${newProvProtocol === "codex_responses" ? "active" : ""}`} onClick={() => setNewProvProtocol("codex_responses")} style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                        <span style={{ fontSize: "1.3rem", display: "flex", alignItems: "center", color: "hsl(var(--secondary))" }}><Terminal size={18} /></span>
+                        <div>
+                          <h4>Codex /responses 协议</h4>
+                          <p>协议组：兼容 Copilot Responses 物理转发</p>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className={`protocol-card ${newProvProtocol === "codex_chat" ? "active" : ""}`} onClick={() => setNewProvProtocol("codex_chat")} style={{ display: "flex", alignItems: "center", gap: "14px", padding: "10px 14px", borderRadius: "10px", border: "1px solid hsl(var(--border-color))", cursor: "pointer", backgroundColor: newProvProtocol === "codex_chat" ? "hsl(var(--success) / 0.05)" : "hsl(var(--bg-app))", borderColor: newProvProtocol === "codex_chat" ? "hsl(var(--success))" : "hsl(var(--border-color))", transition: "all 0.2s" }}>
-                      <span style={{ fontSize: "1.3rem", display: "flex", alignItems: "center", color: "hsl(var(--success))" }}><Share2 size={18} /></span>
-                      <div>
-                        <h4 style={{ margin: 0, fontSize: "0.85rem", fontWeight: 600 }}>Codex /chat 协议</h4>
-                        <p style={{ margin: "2px 0 0", fontSize: "0.72rem", color: "var(--text-muted)" }}>兼容 OpenAI Chat Completions 规范</p>
+                      <div className={`protocol-card ${newProvProtocol === "codex_chat" ? "active" : ""}`} onClick={() => setNewProvProtocol("codex_chat")} style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                        <span style={{ fontSize: "1.3rem", display: "flex", alignItems: "center", color: "hsl(var(--success))" }}><Share2 size={18} /></span>
+                        <div>
+                          <h4>Codex /chat 协议</h4>
+                          <p>协议组：兼容 OpenAI Chat Completions 规范</p>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* 弹窗底部操作按钮 */}
-              <div className="wizard-footer" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "16px", marginTop: "10px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-                <button className="btn-secondary" onClick={() => setShowAddProviderModal(false)} style={{ padding: "0 20px", height: "40px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: 600 }}>
-                  取消
-                </button>
-                <button className="btn-primary" onClick={handleSaveProviderOnly} style={{ padding: "0 24px", height: "40px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: 600 }}>
-                  <Check size={15} /> 保存并创建
-                </button>
-              </div>
+              {/* 步骤 2：获取模型状态 */}
+              {wizardStep === 2 && (
+                <div>
+                  {isFetchingModels ? (
+                    <div style={{ padding: "40px 0", textAlign: "center" }}>
+                      <h4 style={{ marginBottom: "16px", color: "hsl(var(--primary))" }}>正在从 {newProvUrl}/models 获取可用大模型矩阵...</h4>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "600px", margin: "0 auto" }}>
+                        <div className="skeleton-row"></div>
+                        <div className="skeleton-row"></div>
+                        <div className="skeleton-row"></div>
+                        <div className="skeleton-row"></div>
+                      </div>
+                    </div>
+                  ) : fetchModelsError ? (
+                    <div style={{ padding: "30px 24px", borderRadius: "12px", border: "1px solid hsl(var(--danger) / 0.2)", backgroundColor: "hsl(var(--danger) / 0.05)", color: "hsl(var(--danger))", display: "flex", flexDirection: "column", gap: "14px", maxWidth: "620px", margin: "20px auto" }}>
+                      <div style={{ display: "flex", alignItems: "start", gap: "12px" }}>
+                        <Info size={20} style={{ flexShrink: 0, marginTop: "2px", color: "hsl(var(--danger))" }} />
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: 0, flex: 1 }}>
+                          <h4 style={{ fontWeight: 700, fontSize: "0.95rem", color: "hsl(var(--text-primary))", margin: 0 }}>获取模型接口失败 / 超时</h4>
+                          <p style={{ fontSize: "0.78rem", color: "hsl(var(--text-secondary))", lineHeight: "1.5", margin: 0 }}>
+                            部分中转代理或专用网关不提供标准的 `/models` 发现接口。您可以选择直接完成供应商创建，稍后可在模型列表中手动添加模型。
+                          </p>
+                          <div style={{ fontSize: "0.74rem", fontFamily: "var(--font-mono)", backgroundColor: "rgba(0,0,0,0.15)", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.04)", color: "hsl(var(--text-primary))", marginTop: "10px", wordBreak: "break-all", whiteSpace: "pre-wrap" }}>
+                            错误详情：{fetchModelsError}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "14px", marginTop: "4px" }}>
+                        <button className="btn-secondary" onClick={() => { setWizardStep(1); setFetchModelsError(null); }} style={{ padding: "0 14px", height: "36px", fontSize: "0.8rem", borderRadius: "8px" }}>
+                          返回修改 API 信息
+                        </button>
+                        <button className="btn-secondary" onClick={handleFetchModels} style={{ padding: "0 14px", height: "36px", fontSize: "0.8rem", borderRadius: "8px", borderColor: "hsl(var(--primary) / 0.3)", color: "hsl(var(--primary))" }}>
+                          重试获取
+                        </button>
+                        <button className="btn-primary" onClick={handleSaveProviderOnly} style={{ padding: "0 14px", height: "36px", fontSize: "0.8rem", borderRadius: "8px" }}>
+                          直接完成创建 (不拉取模型)
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* 步骤 3：获取到的模型选择列表 */}
+              {wizardStep === 3 && (() => {
+                const totalCount = fetchedModels.length;
+                const hasAnyCaps = fetchedModels.some(m =>
+                  m.cap_reasoning || m.cap_vision || m.cap_tools || m.cap_embedding || m.cap_reranking || m.cap_long_context
+                );
+                const filteredCount = fetchedModels.filter(m => {
+                  if (wizardSearchQuery.trim()) {
+                    const q = wizardSearchQuery.toLowerCase();
+                    if (!m.name.toLowerCase().includes(q) && !(m.display_name || "").toLowerCase().includes(q)) return false;
+                  }
+                  if (hasAnyCaps && wizardFeatureTab !== "all") {
+                    switch (wizardFeatureTab) {
+                      case "reasoning":  return !!m.cap_reasoning;
+                      case "vision":     return !!m.cap_vision;
+                      case "tools":      return !!m.cap_tools;
+                      case "embedding":  return !!m.cap_embedding;
+                      case "reranking":  return !!m.cap_reranking;
+                      case "long_ctx":   return !!m.cap_long_context;
+                      default:           return true;
+                    }
+                  }
+                  return true;
+                }).length;
+                const isFiltered = wizardSearchQuery.trim().length > 0 || (hasAnyCaps && wizardFeatureTab !== "all");
+                const displayCount = isFiltered ? `${filteredCount}/${totalCount}` : `${totalCount}`;
+
+                return (
+                  <div>
+                    <div style={{ marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <h4 style={{ fontSize: "0.92rem", fontWeight: "700", margin: 0 }}>模型列表发现成功</h4>
+                          <span style={{ 
+                            fontSize: "0.74rem", 
+                            fontWeight: 600, 
+                            padding: "2px 8px", 
+                            borderRadius: "6px", 
+                            backgroundColor: "hsl(var(--primary) / 0.1)", 
+                            color: "hsl(var(--primary))"
+                          }}>
+                            {displayCount}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>来自上游大模型端点解析的全部活跃模型</p>
+                      </div>
+                    </div>
+                    {renderModelPullingInterface(
+                      fetchedModels,
+                      wizardSearchQuery,
+                      setWizardSearchQuery,
+                      isFetchingModels,
+                      handleFetchModels,
+                      selectedFetchedModelNames,
+                      (name, isAdded) => {
+                        if (isAdded) {
+                          setSelectedFetchedModelNames(prev => prev.filter(n => n !== name));
+                        } else {
+                          setSelectedFetchedModelNames(prev => [...prev, name]);
+                        }
+                      },
+                      () => {
+                        const filtered = fetchedModels.filter(m => {
+                          if (wizardSearchQuery.trim()) {
+                            const q = wizardSearchQuery.toLowerCase();
+                            if (!m.name.toLowerCase().includes(q) && !(m.display_name || "").toLowerCase().includes(q)) return false;
+                          }
+                          if (hasAnyCaps && wizardFeatureTab !== "all") {
+                            switch (wizardFeatureTab) {
+                              case "reasoning":  return !!m.cap_reasoning;
+                              case "vision":     return !!m.cap_vision;
+                              case "tools":      return !!m.cap_tools;
+                              case "embedding":  return !!m.cap_embedding;
+                              case "reranking":  return !!m.cap_reranking;
+                              case "long_ctx":   return !!m.cap_long_context;
+                              default:           return true;
+                            }
+                          }
+                          return true;
+                        });
+                        setSelectedFetchedModelNames(filtered.map(m => m.name));
+                      },
+                      wizardFeatureTab,
+                      setWizardFeatureTab
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* 向导底部控制按钮 */}
+              {!isFetchingModels && !fetchModelsError && (
+                <div className="wizard-footer">
+                  {wizardStep > 1 && wizardStep !== 4 ? (
+                    <button className="btn-secondary" onClick={() => { setWizardStep(wizardStep - 1); setFetchModelsError(null); }}>上一步</button>
+                  ) : (
+                    <div></div>
+                  )}
+                  
+                  {wizardStep === 1 && (
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button className="btn-secondary" onClick={handleSaveProviderOnly} style={{ padding: "0 18px", height: "40px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: 600 }}>
+                        直接完成创建
+                      </button>
+                      <button className="btn-primary" onClick={handleFetchModels}>下一步 (发现模型) &nbsp; <ChevronRight size={15} /></button>
+                    </div>
+                  )}
+                  {wizardStep === 3 && (
+                    <button className="btn-primary" onClick={handleAddProviderSubmit}><Check size={16} /> 一键全部导入添加</button>
+                  )}
+                </div>
+              )}
+
+              {/* 正在拉取模型时的底部控制 */}
+              {isFetchingModels && (
+                <div className="wizard-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <button className="btn-secondary" disabled style={{ opacity: 0.5, cursor: "not-allowed" }}>上一步</button>
+                  <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <RotateCw size={12} className="anim-spin" /> 正在发现上游模型...
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
