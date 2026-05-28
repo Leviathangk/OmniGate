@@ -1377,7 +1377,6 @@ function App() {
                       <th>供应商名称</th>
                       <th>API 基础 URL</th>
                       <th>协议类型</th>
-                      <th>默认轮询权重</th>
                       <th>启用状态</th>
                       <th>操作</th>
                     </tr>
