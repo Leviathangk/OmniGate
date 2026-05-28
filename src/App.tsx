@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import {
   LayoutDashboard,
@@ -175,7 +176,7 @@ interface CustomSelectProps {
 
 const CustomSelect: React.FC<CustomSelectProps> = ({ value, options, onChange, style, width = "100%" }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [openUpward, setOpenUpward] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find(opt => opt.value === value) || options[0];
@@ -183,14 +184,24 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, options, onChange, s
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
+        if (!(e.target as HTMLElement).closest('.custom-select-portal-menu')) {
+          setIsOpen(false);
+        }
       }
     };
+    const handleScroll = () => {
+      if (isOpen) setIsOpen(false);
+    };
+
     if (isOpen) {
       document.addEventListener("mousedown", handleOutsideClick);
+      window.addEventListener("scroll", handleScroll, true);
+      window.addEventListener("resize", handleScroll);
     }
     return () => {
       document.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleScroll);
     };
   }, [isOpen]);
 
@@ -198,8 +209,23 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, options, onChange, s
     if (!isOpen && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      // If less than 160px space below, open upward
-      setOpenUpward(spaceBelow < 160);
+      const upward = spaceBelow < 160;
+      
+      setMenuStyle({
+        position: "fixed",
+        left: rect.left,
+        width: rect.width,
+        top: upward ? "auto" : rect.bottom + 4,
+        bottom: upward ? (window.innerHeight - rect.top + 4) : "auto",
+        zIndex: 100000,
+        backgroundColor: "hsl(var(--bg-card))",
+        border: "1px solid hsl(var(--border-color))",
+        borderRadius: "8px",
+        boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3)",
+        maxHeight: "180px",
+        overflowY: "auto",
+        padding: "4px"
+      });
     }
     setIsOpen(!isOpen);
   };
@@ -260,25 +286,11 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, options, onChange, s
         </svg>
       </div>
 
-      {/* Dropdown Menu */}
-      {isOpen && (
+      {/* Dropdown Menu via Portal */}
+      {isOpen && createPortal(
         <div 
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            zIndex: 1200,
-            backgroundColor: "hsl(var(--bg-card))",
-            border: "1px solid hsl(var(--border-color))",
-            borderRadius: "8px",
-            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3)",
-            maxHeight: "180px",
-            overflowY: "auto",
-            padding: "4px",
-            // Dynamic placement:
-            bottom: openUpward ? "calc(100% + 4px)" : "auto",
-            top: openUpward ? "auto" : "calc(100% + 4px)"
-          }}
+          className="custom-select-portal-menu"
+          style={menuStyle}
         >
           {options.map((opt, i) => {
             const isSelected = opt.value === value;
@@ -316,7 +328,8 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, options, onChange, s
               </div>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -624,19 +637,11 @@ function App() {
       providers: [],
     },
     {
-      client_id: "codex_responses",
+      client_id: "codex",
       is_enabled: true,
       strategy: "轮询负载",
       retry_count: 3,
       timeout_seconds: 45,
-      providers: [],
-    },
-    {
-      client_id: "codex_chat",
-      is_enabled: false,
-      strategy: "故障转移 (Failover)",
-      retry_count: 1,
-      timeout_seconds: 60,
       providers: [],
     },
     {
@@ -662,6 +667,11 @@ function App() {
   const [settingsSubTab, setSettingsSubTab] = useState<string>("general");
   const [showAddProviderModal, setShowAddProviderModal] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<number>(1);
+  
+  // 客户端内添加供应商的行内编辑状态
+  const [addingProviderForClient, setAddingProviderForClient] = useState<string | null>(null);
+  const [addingProviderProtocol, setAddingProviderProtocol] = useState<string>("");
+  const [addingProviderId, setAddingProviderId] = useState<string>("");
   
   // 添加供应商向导状态
   const [newProvName, setNewProvName] = useState<string>("");
@@ -847,6 +857,18 @@ function App() {
         return {
           ...c,
           providers: c.providers.map(p => p.id === providerId ? { ...p, weight } : p)
+        };
+      }
+      return c;
+    }));
+  };
+
+  const handleToggleClientProvider = (clientId: string, providerId: string) => {
+    setClientConfigs(prev => prev.map(c => {
+      if (c.client_id === clientId) {
+        return {
+          ...c,
+          providers: c.providers.map(p => p.id === providerId ? { ...p, is_active: !p.is_active } : p)
         };
       }
       return c;
@@ -1422,8 +1444,7 @@ function App() {
             <div>
               <div className="tabs-control-row">
                 <button className={`tab-select-btn ${clientSubTab === "claude" ? "active" : ""}`} onClick={() => setClientSubTab("claude")}>Claude 客户端配置</button>
-                <button className={`tab-select-btn ${clientSubTab === "codex_responses" ? "active" : ""}`} onClick={() => setClientSubTab("codex_responses")}>Codex (Responses) 配置</button>
-                <button className={`tab-select-btn ${clientSubTab === "codex_chat" ? "active" : ""}`} onClick={() => setClientSubTab("codex_chat")}>Codex (Chat) 配置</button>
+                <button className={`tab-select-btn ${clientSubTab === "codex" ? "active" : ""}`} onClick={() => setClientSubTab("codex")}>Codex 客户端配置</button>
                 <button className={`tab-select-btn ${clientSubTab === "opencode" ? "active" : ""}`} onClick={() => setClientSubTab("opencode")}>OpenCode 客户端配置</button>
               </div>
 
@@ -1466,14 +1487,14 @@ function App() {
                     <div>
                       <div className="card-header-row" style={{ marginBottom: "10px" }}>
                         <h4 style={{ fontSize: "0.88rem", fontWeight: "600" }}>供应商列表及权重分配</h4>
-                        <button className="btn-secondary" style={{ padding: "6px 12px", fontSize: "0.76rem" }} onClick={() => setActiveTab("providers")}><Plus size={14} /> 添加新成员</button>
+                        <button className="btn-secondary" style={{ padding: "6px 12px", fontSize: "0.76rem" }} onClick={() => setAddingProviderForClient(config.client_id)}><Plus size={14} /> 添加新成员</button>
                       </div>
 
                       <div className="responsive-table-container">
                         <table className="data-table">
                           <thead>
                             <tr>
-                              <th style={{ width: "60px" }}>优先级</th>
+                              <th style={{ width: "80px" }}>优先级</th>
                               <th>供应商</th>
                               <th>运行状态</th>
                               <th style={{ width: "200px" }}>轮换权重 (Weight)</th>
@@ -1483,26 +1504,96 @@ function App() {
                           <tbody>
                             {config.providers.map((p, pIndex) => (
                               <tr key={pIndex}>
-                                <td className="drag-handle">☰ &nbsp; {pIndex + 1}</td>
-                                <td style={{ fontWeight: "600" }}>{p.name}</td>
+                                <td>
+                                  <div className="drag-handle" style={{ display: "inline-flex" }}>
+                                    ☰ &nbsp; {pIndex + 1}
+                                  </div>
+                                </td>
+                                <td style={{ fontWeight: "600" }}>
+                                  {p.name}
+                                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{p.api_url}</div>
+                                </td>
                                 <td>
                                   <span className="status-badge success">
                                     可用
                                   </span>
                                 </td>
                                 <td>
-                                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                                    <input type="range" min="10" max="100" step="10" value={p.weight} onChange={(e) => handleWeightChange(config.client_id, p.id, Number(e.target.value))} style={{ flex: "1" }} />
-                                    <span style={{ fontWeight: "bold", width: "30px", textAlign: "right" }}>{p.weight}</span>
-                                  </div>
+                                  <input type="number" min="1" value={p.weight} onChange={(e) => handleWeightChange(config.client_id, p.id, Number(e.target.value))} style={{ width: "80px", padding: "4px 8px", borderRadius: "4px", border: "1px solid hsl(var(--border-color))", backgroundColor: "hsl(var(--bg-card))", color: "hsl(var(--text-primary))" }} />
                                 </td>
                                 <td>
-                                  <span style={{ fontSize: "0.8rem", color: p.is_active ? "hsl(var(--success))" : "hsl(var(--text-muted))", fontWeight: "600" }}>
-                                    {p.is_active ? "参与轮换" : "未启用"}
-                                  </span>
+                                  <div className="switch-container" onClick={() => handleToggleClientProvider(config.client_id, p.id)}>
+                                    <div className={`switch-track ${p.is_active ? "active" : ""}`}>
+                                      <div className="switch-thumb"></div>
+                                    </div>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
+                            {addingProviderForClient === config.client_id && (
+                              <tr>
+                                <td colSpan={2}>
+                                  <div style={{ display: "flex", gap: "10px", width: "100%" }}>
+                                    <div style={{ flex: "0 0 160px" }}>
+                                      <CustomSelect
+                                        value={addingProviderProtocol}
+                                        onChange={(v) => {
+                                          setAddingProviderProtocol(v);
+                                          setAddingProviderId("");
+                                        }}
+                                        options={[
+                                          { label: "选择协议", value: "" },
+                                          ...(config.client_id === "claude" ? [{ label: "Claude 协议", value: "claude" }] : []),
+                                          ...(config.client_id === "codex" ? [{ label: "Codex /responses", value: "codex_responses" }] : []),
+                                          ...(config.client_id === "opencode" ? [
+                                            { label: "Claude 协议", value: "claude" },
+                                            { label: "Codex /responses", value: "codex_responses" },
+                                            { label: "Codex /chat", value: "codex_chat" }
+                                          ] : [])
+                                        ]}
+                                      />
+                                    </div>
+                                    <div style={{ flex: "1" }}>
+                                      <CustomSelect
+                                        value={addingProviderId}
+                                        onChange={(v) => {
+                                          setAddingProviderId(v);
+                                          // 延迟执行添加，因为 setState 是异步的
+                                          setTimeout(() => {
+                                            if (v) {
+                                              const provider = providers.find(p => p.id === v);
+                                              if (provider) {
+                                                setClientConfigs(prev => prev.map(c => {
+                                                  if (c.client_id === config.client_id) {
+                                                    if (c.providers.some(p => p.id === provider.id)) return c;
+                                                    return { ...c, providers: [...c.providers, { ...provider, weight: 1, is_active: true }] };
+                                                  }
+                                                  return c;
+                                                }));
+                                                setAddingProviderForClient(null);
+                                                setAddingProviderProtocol("");
+                                                setAddingProviderId("");
+                                              }
+                                            }
+                                          }, 0);
+                                        }}
+                                        options={[
+                                          { label: "请选择供应商...", value: "" },
+                                          ...providers
+                                            .filter(p => p.protocol === addingProviderProtocol && !config.providers.some(cp => cp.id === p.id))
+                                            .map(p => ({ label: p.name, value: p.id }))
+                                        ]}
+                                      />
+                                    </div>
+                                  </div>
+                                </td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td>
+                                  <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem" }} onClick={() => setAddingProviderForClient(null)}>取消</button>
+                                </td>
+                              </tr>
+                            )}
                           </tbody>
                         </table>
                       </div>
