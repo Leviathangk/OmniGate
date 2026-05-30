@@ -8,6 +8,7 @@ use std::sync::Arc;
 use super::router::AppState;
 use futures_util::TryStreamExt;
 use std::time::Duration;
+use std::time::Instant;
 
 fn build_json_error(status: StatusCode, code: &str, message: &str) -> axum::response::Response {
     let json_body = serde_json::json!({
@@ -35,6 +36,15 @@ pub async fn handle_claude_messages(
         Ok(b) => b,
         Err(_) => return Ok(build_json_error(StatusCode::BAD_REQUEST, "invalid_request", "[OmniGate] 无法解析传入的请求体数据。").into_response()),
     };
+
+    let model_name = if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+        json.get("model").and_then(|m| m.as_str()).unwrap_or("unknown").to_string()
+    } else {
+        "unknown".to_string()
+    };
+    
+    let req_path = "/messages".to_string();
+
 
     let plan = match state.balancer.get_routing_plan("claude") {
         Some(p) => p,
@@ -92,6 +102,7 @@ pub async fn handle_claude_messages(
         let req = state.http_client.post(&upstream_url)
             .headers(req_headers)
             .body(body_bytes.clone());
+        let start_time = Instant::now();
 
         // Implement timeout
         let res_result = tokio::time::timeout(
@@ -105,6 +116,9 @@ pub async fn handle_claude_messages(
                 if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
                     let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
                     last_error = format!("HTTP {} - {}", status, body_text);
+                    let latency = start_time.elapsed().as_millis() as u32;
+                    
+                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, Some(&last_error));
                     attempt += 1;
                     continue;
                 }
@@ -116,12 +130,18 @@ pub async fn handle_claude_messages(
                         response_builder = response_builder.header(k, v);
                     }
                 }
+                let latency = start_time.elapsed().as_millis() as u32;
+                
+                let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, None);
                 let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                 let body = Body::from_stream(stream);
                 return Ok(response_builder.body(body).unwrap());
             }
             _ => {
                 last_error = "Timeout or network error".to_string();
+                let latency = start_time.elapsed().as_millis() as u32;
+                
+                let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 504, latency, Some(&last_error));
                 attempt += 1;
                 continue;
             }
@@ -159,6 +179,14 @@ pub async fn handle_codex_proxy(
         Err(_) => return Ok(build_json_error(StatusCode::BAD_REQUEST, "invalid_request", "[OmniGate] 无法解析传入的请求体数据。").into_response()),
     };
 
+    let model_name = if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+        json.get("model").and_then(|m| m.as_str()).unwrap_or("unknown").to_string()
+    } else {
+        "unknown".to_string()
+    };
+
+
+    let req_path = path.clone();
     let plan = match state.balancer.get_routing_plan("codex") {
         Some(p) => p,
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),
@@ -228,6 +256,7 @@ pub async fn handle_codex_proxy(
         let req = state.http_client.request(method.clone(), &upstream_url)
             .headers(req_headers)
             .body(body_bytes.clone());
+        let start_time = Instant::now();
             
         let res_result = tokio::time::timeout(
             Duration::from_secs(plan.timeout_seconds as u64),
@@ -241,6 +270,9 @@ pub async fn handle_codex_proxy(
                 if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
                     let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
                     last_error = format!("HTTP {} - {}", status, body_text);
+                    let latency = start_time.elapsed().as_millis() as u32;
+                    
+                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, Some(&last_error));
                     attempt += 1;
                     continue;
                 }
@@ -252,6 +284,9 @@ pub async fn handle_codex_proxy(
                         response_builder = response_builder.header(k, v);
                     }
                 }
+                let latency = start_time.elapsed().as_millis() as u32;
+                
+                let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, None);
                 let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                 let body = Body::from_stream(stream);
                 return Ok(response_builder.body(body).unwrap());
@@ -259,12 +294,18 @@ pub async fn handle_codex_proxy(
             Ok(Err(e)) => {
                 last_error = format!("Reqwest error: {}", e);
                 eprintln!("Upstream reqwest error: {}", e);
+                let latency = start_time.elapsed().as_millis() as u32;
+                
+                let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 502, latency, Some(&last_error));
                 attempt += 1;
                 continue;
             }
             Err(e) => {
                 last_error = format!("Timeout error: {}", e);
                 eprintln!("Upstream timeout error: {}", e);
+                let latency = start_time.elapsed().as_millis() as u32;
+                
+                let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 504, latency, Some(&last_error));
                 attempt += 1;
                 continue;
             }

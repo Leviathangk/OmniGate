@@ -9,14 +9,16 @@ use super::handlers;
 pub struct AppState {
     pub balancer: Arc<Balancer>,
     pub http_client: reqwest::Client,
+    pub db: Arc<crate::database::DbManager>,
 }
 
-pub fn create_router(balancer: Arc<Balancer>) -> Router {
+pub fn create_router(balancer: Arc<Balancer>, db: Arc<crate::database::DbManager>) -> Router {
     let http_client = reqwest::Client::new();
     
     let state = Arc::new(AppState {
         balancer,
         http_client,
+        db,
     });
 
     Router::new()

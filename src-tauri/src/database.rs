@@ -4,6 +4,39 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use uuid::Uuid;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TrafficPoint {
+    pub time: String,
+    pub count: i64,
+    pub avg_latency: f64,
+    pub error_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RecentActivity {
+    pub id: String,
+    pub provider_name: String,
+    pub model_name: String,
+    pub status_code: u16,
+    pub latency_ms: u32,
+    pub error_message: Option<String>,
+    pub created_at: i64,
+    pub protocol: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModelUsage {
+    pub name: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HeatmapData {
+    pub date: String,
+    pub count: i64,
+}
 
 /// 生成无连字符的 UUID
 pub fn generate_uuid() -> String {
@@ -79,6 +112,150 @@ pub struct DbManager {
 }
 
 impl DbManager {
+
+    pub fn insert_usage_stat(
+        &self,
+        provider_id: &str,
+        model_name: &str,
+        request_path: &str,
+        status_code: u16,
+        latency_ms: u32,
+        error_message: Option<&str>,
+    ) -> Result<(), String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let created_at = chrono::Utc::now().timestamp();
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO usage_statistics (id, provider_id, model_name, request_path, status_code, latency_ms, error_message, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![id, provider_id, model_name, request_path, status_code, latency_ms, error_message, created_at]
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_today_traffic_trend(&self) -> Result<Vec<TrafficPoint>, String> {
+        let conn = self.conn.lock().unwrap();
+        // Today from 00:00 to 23:59
+        let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+        
+        let mut stmt = conn.prepare(
+            "SELECT strftime('%H:00', datetime(created_at, 'unixepoch', 'localtime')) as hour, 
+                    COUNT(*) as count,
+                    AVG(latency_ms) as avg_latency,
+                    SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count
+             FROM usage_statistics 
+             WHERE created_at >= ?1 
+             GROUP BY hour 
+             ORDER BY hour ASC"
+        ).map_err(|e| e.to_string())?;
+
+        let rows = stmt.query_map([today_start], |row| {
+            let avg_latency: f64 = row.get(2).unwrap_or(0.0);
+            let error_count: i64 = row.get(3).unwrap_or(0);
+            Ok(TrafficPoint {
+                time: row.get(0)?,
+                count: row.get(1)?,
+                avg_latency,
+                error_count,
+            })
+        }).map_err(|e| e.to_string())?;
+
+        let mut res = Vec::new();
+        for r in rows {
+            if let Ok(stat) = r {
+                res.push(stat);
+            }
+        }
+        Ok(res)
+    }
+
+    pub fn get_recent_activities(&self, limit: u32) -> Result<Vec<RecentActivity>, String> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT u.id, IFNULL(p.name, 'Unknown Provider'), u.model_name, u.status_code, u.latency_ms, u.error_message, u.created_at, p.protocol
+             FROM usage_statistics u
+             LEFT JOIN providers p ON u.provider_id = p.id
+             ORDER BY u.created_at DESC
+             LIMIT ?1"
+        ).map_err(|e| e.to_string())?;
+
+        let rows = stmt.query_map([limit], |row| {
+            Ok(RecentActivity {
+                id: row.get(0)?,
+                provider_name: row.get(1)?,
+                model_name: row.get(2)?,
+                status_code: row.get(3)?,
+                latency_ms: row.get(4)?,
+                error_message: row.get(5)?,
+                created_at: row.get(6)?,
+                protocol: row.get(7).unwrap_or(None),
+            })
+        }).map_err(|e| e.to_string())?;
+
+        let mut res = Vec::new();
+        for r in rows {
+            if let Ok(act) = r {
+                res.push(act);
+            }
+        }
+        Ok(res)
+    }
+
+    pub fn get_model_usage_distribution(&self) -> Result<Vec<ModelUsage>, String> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT model_name, COUNT(*) as count
+             FROM usage_statistics
+             WHERE status_code = 200
+             GROUP BY model_name
+             ORDER BY count DESC
+             LIMIT 10"
+        ).map_err(|e| e.to_string())?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(ModelUsage {
+                name: row.get(0)?,
+                count: row.get(1)?,
+            })
+        }).map_err(|e| e.to_string())?;
+
+        let mut res = Vec::new();
+        for r in rows {
+            if let Ok(m) = r {
+                res.push(m);
+            }
+        }
+        Ok(res)
+    }
+
+    pub fn get_heatmap_data(&self) -> Result<Vec<HeatmapData>, String> {
+        let conn = self.conn.lock().unwrap();
+        let six_months_ago = chrono::Utc::now().timestamp() - (180 * 24 * 60 * 60);
+        
+        let mut stmt = conn.prepare(
+            "SELECT strftime('%Y-%m-%d', datetime(created_at, 'unixepoch', 'localtime')) as date, COUNT(*) as count
+             FROM usage_statistics
+             WHERE created_at >= ?1
+             GROUP BY date
+             ORDER BY date ASC"
+        ).map_err(|e| e.to_string())?;
+
+        let rows = stmt.query_map([six_months_ago], |row| {
+            Ok(HeatmapData {
+                date: row.get(0)?,
+                count: row.get(1)?,
+            })
+        }).map_err(|e| e.to_string())?;
+
+        let mut res = Vec::new();
+        for r in rows {
+            if let Ok(h) = r {
+                res.push(h);
+            }
+        }
+        Ok(res)
+    }
+
     pub fn init(app_config_dir: PathBuf) -> Result<Self, String> {
         if !app_config_dir.exists() {
             fs::create_dir_all(&app_config_dir)
@@ -96,8 +273,19 @@ impl DbManager {
 
         let manager = Self { conn: Mutex::new(conn) };
         manager.create_tables().map_err(|e| format!("Failed to create tables: {}", e))?;
-
+        manager.cleanup_old_usage_statistics().map_err(|e| format!("Failed to cleanup old usage statistics: {}", e))?;
         Ok(manager)
+    }
+
+    fn cleanup_old_usage_statistics(&self) -> Result<(), String> {
+        // Data retention: Keep logs for 180 days (6 months)
+        let six_months_ago = chrono::Utc::now().timestamp() - (180 * 24 * 60 * 60);
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM usage_statistics WHERE created_at < ?1",
+            [six_months_ago],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     fn create_tables(&self) -> Result<(), String> {

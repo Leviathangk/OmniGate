@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   LayoutDashboard,
   Server,
@@ -37,10 +38,15 @@ import {
   FileText
 } from "lucide-react";
 import "./App.css";
+import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 // ============================================================================
 // TypeScript 接口定义
 // ============================================================================
+interface TrafficPoint { time: string; count: number; avg_latency: number; error_count: number; }
+interface RecentActivity { id: string; provider_name: string; model_name: string; status_code: number; latency_ms: number; error_message?: string; created_at: number; protocol?: string; }
+interface ModelUsage { name: string; count: number; }
+interface HeatmapData { date: string; count: number; }
 interface Provider {
   id: string;
   name: string;
@@ -102,16 +108,7 @@ interface UsageOverview {
   today_tokens_growth: string;
 }
 
-interface ChartPoint {
-  label: string;
-  value: number;
-}
 
-interface DistributionPoint {
-  name: string;
-  percentage: number;
-  color: string;
-}
 
 interface RecentActivity {
   name: string;
@@ -603,6 +600,22 @@ const renderModelPullingInterface = (
   );
 };
 
+
+const CustomTrafficTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div style={{ backgroundColor: 'hsl(var(--bg-card))', border: '1px solid hsl(var(--border-color))', borderRadius: '8px', padding: '10px', fontSize: '0.8rem', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+        <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: 'hsl(var(--text-primary))' }}>{label}</p>
+        <p style={{ margin: '4px 0', color: '#10b981' }}>请求总数: <strong>{data.count}</strong></p>
+        <p style={{ margin: '4px 0', color: '#ef4444' }}>失败数: <strong>{data.error_count}</strong></p>
+        <p style={{ margin: '4px 0', color: 'hsl(var(--text-secondary))' }}>平均延迟: <strong>{Math.round(data.avg_latency)} ms</strong></p>
+      </div>
+    );
+  }
+  return null;
+};
+
 function App() {
   // ============================================================================
   // 状态定义
@@ -613,6 +626,12 @@ function App() {
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
   
   // 核心数据状态
+  
+  const [trafficTrend, setTrafficTrend] = useState<TrafficPoint[]>([]);
+  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
+  const [modelUsage, setModelUsage] = useState<ModelUsage[]>([]);
+  const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([]);
+
   const [overviewData, setOverviewData] = useState<UsageOverview>({
     total_providers: 0, active_providers: 0,
     total_models: 0, active_models: 0,
@@ -650,11 +669,24 @@ function App() {
     }
   }, [toastMessage]);
 
+  useEffect(() => {
+    if (activeTab === "overview" || activeTab === "dashboard") {
+      const unlisten = listen("dashboard-updated", (event: any) => {
+        const data = event.payload;
+        setOverviewData(data.overview);
+        setTrafficTrend(data.traffic);
+        setRecentActivities(data.recent);
+        setModelUsage(data.model_usage);
+        setHeatmapData(data.heatmap);
+      });
+      return () => {
+        unlisten.then(f => f());
+      };
+    }
+  }, [activeTab]);
+
   // UI交互与图表/客户端/设置状态
-  const chartRequests: ChartPoint[] = [];
-  const chartTokens: ChartPoint[] = [];
-  const distribution: DistributionPoint[] = [];
-  const recentActivities: RecentActivity[] = [];
+  // UI交互与图表/客户端/设置状态
   const [clientConfigs, setClientConfigs] = useState<ClientConfig[]>([
     {
       client_id: "claude",
@@ -800,13 +832,21 @@ function App() {
   // 加载核心数据（从真实 SQLite 后端）
   const loadData = async () => {
     try {
-      const [overview, provList, mcpList, skillList, loadedClientConfigs] = await Promise.all([
+      const [overview, provList, mcpList, skillList, loadedClientConfigs, traffic, recent, dist, heatmap] = await Promise.all([
         invoke<UsageOverview>("get_usage_overview"),
         invoke<Provider[]>("get_providers"),
         invoke<McpServer[]>("get_mcp_servers"),
         invoke<Skill[]>("get_skills"),
         invoke<ClientConfig[]>("get_client_configs"),
+        invoke<TrafficPoint[]>("get_today_traffic_trend"),
+        invoke<RecentActivity[]>("get_recent_activities", { limit: 10 }),
+        invoke<ModelUsage[]>("get_model_usage_distribution"),
+        invoke<HeatmapData[]>("get_heatmap_data"),
       ]);
+      setTrafficTrend(traffic);
+      setRecentActivities(recent);
+      setModelUsage(dist);
+      setHeatmapData(heatmap);
       setOverviewData(overview);
       setProviders(provList);
       setMcpServers(mcpList);
@@ -1393,173 +1433,163 @@ function App() {
                     <div className="card-header-row">
                       <h3>今日流量走势</h3>
                       <div style={{ display: "flex", gap: "8px" }}>
-                        <span className="status-badge success" style={{ fontSize: "0.7rem", padding: "2px 8px" }}>正常运行</span>
+                        <span className="status-badge success" style={{ fontSize: "0.7rem", padding: "2px 8px" }}>实时更新</span>
                       </div>
                     </div>
-
-                    <div className="chart-container-row">
-                      <div className="chart-item">
-                        <div className="chart-header">
-                          <span className="chart-title">请求次数</span>
-                          <span className="chart-growth up">{overviewData.today_requests_growth} ↑</span>
-                        </div>
-                        <div className="chart-num">
-                          {overviewData.today_requests.toLocaleString()}
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: "normal", marginLeft: "4px" }}>次请求</span>
-                        </div>
-                        
-                        {chartRequests.length === 0 ? (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "120px", color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                            <LineChart size={24} style={{ opacity: 0.3, marginBottom: "8px" }} />
-                            <span>暂无请求记录</span>
-                          </div>
-                        ) : (
-                          <svg className="svg-chart bar-svg">
-                            <g transform="translate(10, 10)">
-                              {chartRequests.map((pt, i) => (
-                                <rect key={i} x={i * 45} y={100 - pt.value / 2.5} width="28" height={pt.value / 2.5} />
-                              ))}
-                              {chartRequests.map((pt, i) => (
-                                <text key={i} x={i * 45 + 14} y="115" textAnchor="middle" fill="var(--text-muted)" fontSize="8px">{pt.label}</text>
-                              ))}
-                            </g>
-                          </svg>
-                        )}
-                      </div>
-
-                      <div className="chart-item">
-                        <div className="chart-header">
-                          <span className="chart-title">Tokens 消耗</span>
-                          <span className="chart-growth up">{overviewData.today_tokens_growth} ↑</span>
-                        </div>
-                        <div className="chart-num">
-                          {overviewData.today_tokens}
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: "normal", marginLeft: "4px" }}>Tokens</span>
-                        </div>
-
-                        {chartTokens.length === 0 ? (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "120px", color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                            <LineChart size={24} style={{ opacity: 0.3, marginBottom: "8px" }} />
-                            <span>暂无消耗统计</span>
-                          </div>
-                        ) : (
-                          <svg className="svg-chart line-svg">
+                    <div style={{ width: '100%', height: '250px', marginTop: '20px' }}>
+                      {trafficTrend.length === 0 ? (
+                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.8rem", height: "100%" }}>
+                            <span>暂无流量走势数据</span>
+                         </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={trafficTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <defs>
-                              <linearGradient id="blue-gradient" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="hsl(var(--secondary))" stopOpacity="0.4" />
-                                <stop offset="100%" stopColor="hsl(var(--secondary))" stopOpacity="0.0" />
+                              <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                               </linearGradient>
                             </defs>
-                            <g transform="translate(10, 10)">
-                              <path className="area" d={`M 0 100 ${chartTokens.map((pt, i) => `L ${i * 45} ${100 - pt.value / 7}`).join(" ")} L 225 100 Z`} />
-                              <path className="line" d={chartTokens.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${i * 45} ${100 - pt.value / 7}`).join(" ")} />
-                              {chartTokens.map((pt, i) => (
-                                <circle key={i} cx={i * 45} cy={100 - pt.value / 7} r="3.5" fill="hsl(var(--bg-card))" stroke="hsl(var(--secondary))" strokeWidth="2" />
-                              ))}
-                              {chartTokens.map((pt, i) => (
-                                <text key={i} x={i * 45} y="115" textAnchor="middle" fill="var(--text-muted)" fontSize="8px">{pt.label}</text>
-                              ))}
-                            </g>
-                          </svg>
-                        )}
-                      </div>
+                            <XAxis dataKey="time" stroke="hsl(var(--text-muted))" fontSize={12} tickLine={false} axisLine={false} />
+                            <YAxis stroke="hsl(var(--text-muted))" fontSize={12} tickLine={false} axisLine={false} />
+                            <RechartsTooltip content={<CustomTrafficTooltip />} />
+                            <Area type="monotone" dataKey="count" stroke="#10b981" fillOpacity={1} fill="url(#colorCount)" />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      )}
                     </div>
                   </div>
-
+                  
                   <div className="panel-card">
                     <div className="card-header-row">
                       <h3>最近转发活动</h3>
-                      <button className="btn-secondary" style={{ padding: "6px 12px", fontSize: "0.76rem" }} onClick={() => setActiveTab("stats")}>查看全部记录</button>
                     </div>
-                    {recentActivities.length === 0 ? (
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 16px", color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                        <Activity size={24} style={{ opacity: 0.3, marginBottom: "8px" }} />
-                        <span>暂无近期转发活动</span>
-                      </div>
-                    ) : (
-                      <div className="activity-list">
-                        {recentActivities.map((act, i) => (
-                          <div className="activity-item" key={i}>
-                            <div className={`activity-badge ${act.icon_type}`}>
-                              {act.icon_type === "claude" && "C"}
-                              {act.icon_type === "codex" && "X"}
-                              {act.icon_type === "opencode" && "O"}
-                            </div>
-                            <div className="activity-details">
-                              <div className="activity-name">{act.name}</div>
-                              <div className="activity-sub">{act.subtitle}</div>
-                            </div>
-                            <div className="activity-time">{act.time_ago}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <div className="table-container" style={{ marginTop: '16px' }}>
+                      <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid hsl(var(--border-color))', color: 'hsl(var(--text-muted))' }}>
+                            <th style={{ padding: '8px', width: '80px' }}>来源</th>
+                            <th style={{ padding: '8px' }}>状态</th>
+                            <th style={{ padding: '8px' }}>模型</th>
+                            <th style={{ padding: '8px' }}>供应商</th>
+                            <th style={{ padding: '8px' }}>延迟</th>
+                            <th style={{ padding: '8px', whiteSpace: 'nowrap' }}>发出时间</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {recentActivities.map((act, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid hsl(var(--border-color))' }}>
+                              <td style={{ padding: '8px' }}>
+                                {act.protocol === 'claude' && <span title="Claude" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(168, 85, 247, 0.1)', color: '#a855f7', fontSize: '0.7rem', fontWeight: 'bold' }}>Claude</span>}
+                                {act.protocol === 'codex_responses' && <span title="Codex" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', fontSize: '0.7rem', fontWeight: 'bold' }}>Codex</span>}
+                                {act.protocol === 'codex_chat' && <span title="OpenCode" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', fontSize: '0.7rem', fontWeight: 'bold' }}>OpenCode</span>}
+                                {(!act.protocol) && <span style={{ color: 'hsl(var(--text-muted))' }}>-</span>}
+                              </td>
+                              <td style={{ padding: '8px' }}>
+                                <span className={`status-badge ${act.status_code === 200 ? 'success' : 'error'}`} style={{ fontSize: '0.7rem' }}>
+                                  {act.status_code}
+                                </span>
+                              </td>
+                              <td style={{ padding: '8px', color: 'hsl(var(--text-primary))' }}>{act.model_name}</td>
+                              <td style={{ padding: '8px', color: 'hsl(var(--text-secondary))' }}>{act.provider_name}</td>
+                              <td style={{ padding: '8px', fontFamily: 'monospace' }}>{act.latency_ms}ms</td>
+                              <td style={{ padding: '8px', color: 'hsl(var(--text-secondary))', fontSize: '0.8rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                {(() => {
+                                  const d = new Date(act.created_at * 1000);
+                                  const pad = (n: number) => n.toString().padStart(2, '0');
+                                  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+                                })()}
+                              </td>
+                            </tr>
+                          ))}
+                          {recentActivities.length === 0 && (
+                            <tr><td colSpan={6} style={{ padding: '20px', textAlign: 'center', color: 'hsl(var(--text-muted))' }}>暂无请求记录</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
 
                 <div className="right-column">
                   <div className="panel-card">
                     <div className="card-header-row">
-                      <h3>快速快捷操作</h3>
-                    </div>
-                    <div className="quick-actions">
-                      <button className="action-btn" onClick={() => { setShowAddProviderModal(true); setWizardStep(1); }}>
-                        <span className="action-icon" style={{ color: "hsl(var(--primary))" }}><Plus size={16} /></span>
-                        <span>添加供应商配置</span>
-                      </button>
-                      <button className="action-btn" onClick={() => setActiveTab("skills")}>
-                        <span className="action-icon" style={{ color: "hsl(var(--primary))" }}><Brain size={16} /></span>
-                        <span>新增 Skill 提示词</span>
-                      </button>
-                      <button className="action-btn" onClick={() => setActiveTab("mcp")}>
-                        <span className="action-icon" style={{ color: "hsl(var(--primary))" }}><Boxes size={16} /></span>
-                        <span>配置新的 MCP 服务端</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="panel-card">
-                    <div className="card-header-row">
                       <h3>使用分布 (按模型)</h3>
                     </div>
-                    {distribution.length === 0 ? (
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 16px", color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                        <Database size={24} style={{ opacity: 0.3, marginBottom: "8px" }} />
-                        <span>暂无使用分布数据</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div style={{ display: "flex", justifyContent: "center", padding: "10px 0" }}>
-                          <svg width="150" height="150" className="donut-svg">
-                            <circle cx="75" cy="75" r="50" className="bg" />
-                            <circle cx="75" cy="75" r="50" className="segment" stroke="#a855f7" 
-                              strokeDasharray="142 314" strokeDashoffset="0" />
-                            <circle cx="75" cy="75" r="50" className="segment" stroke="#3b82f6" 
-                              strokeDasharray="90 314" strokeDashoffset="-142" />
-                            <circle cx="75" cy="75" r="50" className="segment" stroke="#10b981" 
-                              strokeDasharray="51 314" strokeDashoffset="-232" />
-                            <circle cx="75" cy="75" r="50" className="segment" stroke="#f59e0b" 
-                              strokeDasharray="31 314" strokeDashoffset="-283" />
-                          </svg>
-                        </div>
-
-                        <div className="distribution-legend">
-                          {distribution.map((d, i) => (
-                            <div className="legend-item" key={i}>
-                              <div className="legend-dot-label">
-                                <span className="legend-dot" style={{ backgroundColor: String(d.color) }}></span>
-                                <span>{d.name}</span>
-                              </div>
-                              <span className="legend-val">{d.percentage}%</span>
+                    <div style={{ width: '100%', height: '220px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                      {modelUsage.length === 0 ? (
+                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                            <span>暂无使用分布数据</span>
+                         </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={modelUsage}
+                              innerRadius={60}
+                              outerRadius={80}
+                              paddingAngle={5}
+                              dataKey="count"
+                              nameKey="name"
+                            >
+                              {modelUsage.map((_entry, index) => {
+                                const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+                                return <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />;
+                              })}
+                            </Pie>
+                            <RechartsTooltip 
+                              contentStyle={{ backgroundColor: 'hsl(var(--bg-card))', borderColor: 'hsl(var(--border-color))', borderRadius: '8px', color: 'hsl(var(--text-primary))' }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                    {/* Legend */}
+                    {modelUsage.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center', marginTop: '10px' }}>
+                        {modelUsage.map((m, i) => {
+                          const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+                          return (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'hsl(var(--text-secondary))' }}>
+                              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: COLORS[i % COLORS.length] }}></div>
+                              {m.name} ({m.count})
                             </div>
-                          ))}
-                        </div>
-                      </>
+                          );
+                        })}
+                      </div>
                     )}
+                  </div>
+                  
+                  
+                  <div className="panel-card">
+                    <div className="card-header-row">
+                      <h3>活跃度热力图 (近半年)</h3>
+                    </div>
+                    <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {heatmapData.length === 0 ? (
+                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.8rem", height: "100px" }}>
+                            <span>暂无请求记录</span>
+                         </div>
+                      ) : (
+                        <div className="heatmap-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(12px, 1fr))', gap: '4px', overflowX: 'auto' }}>
+                          {heatmapData.map((d, i) => {
+                            let opacity = 0.2;
+                            if (d.count > 0) opacity = 0.4;
+                            if (d.count > 50) opacity = 0.6;
+                            if (d.count > 200) opacity = 0.8;
+                            if (d.count > 500) opacity = 1.0;
+                            return (
+                              <div key={i} title={`${d.date}: ${d.count} 次请求`} style={{ width: '12px', height: '12px', borderRadius: '2px', backgroundColor: `rgba(16, 185, 129, ${opacity})`, cursor: 'pointer' }} />
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+
+</div>
           )}
 
           {/* ============================================================================

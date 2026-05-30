@@ -344,6 +344,9 @@ use std::fs;
 use std::path::PathBuf;
 use toml_edit::{DocumentMut, value, Item, Table};
 
+use crate::database::{TrafficPoint, RecentActivity, ModelUsage, HeatmapData};
+
+
 fn get_codex_dir() -> PathBuf {
     if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home).join(".codex")
@@ -544,3 +547,29 @@ pub fn save_client_configs(
     }
     Ok(())
 }
+
+
+// ============================================================================
+// Dashboard Statistics
+// ============================================================================
+
+#[tauri::command]
+pub fn get_today_traffic_trend(state: tauri::State<'_, crate::AppState>) -> Result<Vec<TrafficPoint>, String> {
+    state.db.get_today_traffic_trend()
+}
+
+#[tauri::command]
+pub fn get_recent_activities(limit: u32, state: tauri::State<'_, crate::AppState>) -> Result<Vec<RecentActivity>, String> {
+    state.db.get_recent_activities(limit)
+}
+
+#[tauri::command]
+pub fn get_model_usage_distribution(state: tauri::State<'_, crate::AppState>) -> Result<Vec<ModelUsage>, String> {
+    state.db.get_model_usage_distribution()
+}
+
+#[tauri::command]
+pub fn get_heatmap_data(state: tauri::State<'_, crate::AppState>) -> Result<Vec<HeatmapData>, String> {
+    state.db.get_heatmap_data()
+}
+

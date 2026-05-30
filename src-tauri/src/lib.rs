@@ -5,6 +5,7 @@ mod proxy;
 
 use std::sync::Arc;
 use tauri::Manager;
+use tauri::Emitter;
 use database::DbManager;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,8 +34,55 @@ pub fn run() {
                     });
                     
                     // Start proxy server on default port 3456
+                    let proxy_db_arc = db_arc.clone();
                     tauri::async_runtime::spawn(async move {
-                        proxy::server::start_proxy_server(3456, db_arc, proxy_running).await;
+                        proxy::server::start_proxy_server(3456, proxy_db_arc, proxy_running).await;
+                    });
+                    
+                    // Dashboard event emitter loop
+                    let app_handle = app.handle().clone();
+                    let db_for_events = db_arc.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
+                        loop {
+                            interval.tick().await;
+                            
+                            let (total_providers, active_providers) = db_for_events.count_providers().unwrap_or((0, 0));
+                            let (total_models, active_models) = db_for_events.count_models().unwrap_or((0, 0));
+                            let (total_mcp, active_mcp) = db_for_events.count_mcp_servers().unwrap_or((0, 0));
+                            let (total_skills, active_skills) = db_for_events.count_skills().unwrap_or((0, 0));
+                            
+                            let overview = serde_json::json!({
+                                "total_providers": total_providers,
+                                "active_providers": active_providers,
+                                "total_models": total_models,
+                                "active_models": active_models,
+                                "total_skills": total_skills,
+                                "active_skills": active_skills,
+                                "total_mcp": total_mcp,
+                                "active_mcp": active_mcp,
+                                "today_requests": 0,
+                                "today_requests_growth": "0%",
+                                "today_tokens": "0",
+                                "today_tokens_growth": "0%"
+                            });
+
+                            if let (Ok(traffic), Ok(recent), Ok(model_usage), Ok(heatmap)) = (
+                                db_for_events.get_today_traffic_trend(),
+                                db_for_events.get_recent_activities(10),
+                                db_for_events.get_model_usage_distribution(),
+                                db_for_events.get_heatmap_data()
+                            ) {
+                                let payload = serde_json::json!({
+                                    "overview": overview,
+                                    "traffic": traffic,
+                                    "recent": recent,
+                                    "model_usage": model_usage,
+                                    "heatmap": heatmap
+                                });
+                                let _ = app_handle.emit("dashboard-updated", payload);
+                            }
+                        }
                     });
                 }
                 Err(e) => {
@@ -62,7 +110,11 @@ pub fn run() {
             commands::hijack_codex_config,
             commands::restore_codex_config,
             commands::get_client_configs,
-            commands::save_client_configs
+            commands::save_client_configs,
+            commands::get_today_traffic_trend,
+            commands::get_recent_activities,
+            commands::get_model_usage_distribution,
+            commands::get_heatmap_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
