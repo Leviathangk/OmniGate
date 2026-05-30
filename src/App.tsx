@@ -1703,45 +1703,78 @@ function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {config.providers.map((p, pIndex) => (
-                              <tr key={pIndex}>
-                                <td>
-                                  <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                                    <button 
-                                      className="btn-secondary" 
-                                      style={{ padding: "2px 4px", fontSize: "0.6rem" }} 
-                                      disabled={pIndex === 0}
-                                      onClick={() => handleMoveProvider(config.client_id, pIndex, -1)}
-                                    >↑</button>
-                                    <button 
-                                      className="btn-secondary" 
-                                      style={{ padding: "2px 4px", fontSize: "0.6rem" }} 
-                                      disabled={pIndex === config.providers.length - 1}
-                                      onClick={() => handleMoveProvider(config.client_id, pIndex, 1)}
-                                    >↓</button>
-                                  </div>
-                                </td>
-                                <td style={{ fontWeight: "600" }}>
-                                  {p.name}
-                                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{p.api_url}</div>
-                                </td>
-                                <td>
-                                  <span className="status-badge success">
-                                    可用
-                                  </span>
-                                </td>
-                                <td>
-                                  <input type="number" min="1" value={p.weight} onChange={(e) => handleWeightChange(config.client_id, p.id, Number(e.target.value))} style={{ width: "80px", padding: "4px 8px", borderRadius: "4px", border: "1px solid hsl(var(--border-color))", backgroundColor: "hsl(var(--bg-card))", color: "hsl(var(--text-primary))" }} />
-                                </td>
-                                <td>
-                                  <div className="switch-container" onClick={() => handleToggleClientProvider(config.client_id, p.id)}>
-                                    <div className={`switch-track ${p.is_active ? "active" : ""}`}>
-                                      <div className="switch-thumb"></div>
+                            {config.providers.map((p, pIndex) => {
+                              // 查询全局供应商表，判断该供应商是否已被全局禁用
+                              const globalProvider = providers.find(gp => gp.id === p.id);
+                              const isGloballyDisabled = globalProvider ? !globalProvider.is_active : false;
+
+                              return (
+                                <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : {}}>
+                                  <td>
+                                    <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                                      <button
+                                        className="btn-secondary"
+                                        style={{ padding: "2px 4px", fontSize: "0.6rem" }}
+                                        disabled={pIndex === 0 || isGloballyDisabled}
+                                        onClick={() => handleMoveProvider(config.client_id, pIndex, -1)}
+                                      >↑</button>
+                                      <button
+                                        className="btn-secondary"
+                                        style={{ padding: "2px 4px", fontSize: "0.6rem" }}
+                                        disabled={pIndex === config.providers.length - 1 || isGloballyDisabled}
+                                        onClick={() => handleMoveProvider(config.client_id, pIndex, 1)}
+                                      >↓</button>
                                     </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
+                                  </td>
+                                  <td style={{ fontWeight: "600" }}>
+                                    {p.name}
+                                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{p.api_url}</div>
+                                  </td>
+                                  <td>
+                                    {isGloballyDisabled ? (
+                                      <span className="status-badge" style={{ backgroundColor: "hsl(var(--danger) / 0.15)", color: "hsl(var(--danger))", border: "1px solid hsl(var(--danger) / 0.3)" }}>
+                                        全局已禁用
+                                      </span>
+                                    ) : (
+                                      <span className="status-badge success">可用</span>
+                                    )}
+                                  </td>
+                                  <td>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      value={p.weight}
+                                      disabled={isGloballyDisabled}
+                                      onChange={(e) => handleWeightChange(config.client_id, p.id, Number(e.target.value))}
+                                      style={{
+                                        width: "80px", padding: "4px 8px", borderRadius: "4px",
+                                        border: "1px solid hsl(var(--border-color))",
+                                        backgroundColor: "hsl(var(--bg-card))",
+                                        color: "hsl(var(--text-primary))",
+                                        cursor: isGloballyDisabled ? "not-allowed" : "text"
+                                      }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <div
+                                      className="switch-container"
+                                      style={{ cursor: isGloballyDisabled ? "not-allowed" : "pointer" }}
+                                      onClick={() => {
+                                        if (isGloballyDisabled) {
+                                          setToastMessage(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`);
+                                          return;
+                                        }
+                                        handleToggleClientProvider(config.client_id, p.id);
+                                      }}
+                                    >
+                                      <div className={`switch-track ${p.is_active && !isGloballyDisabled ? "active" : ""}`}>
+                                        <div className="switch-thumb"></div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                             {addingProviderForClient === config.client_id && (
                               <tr>
                                 <td colSpan={2}>

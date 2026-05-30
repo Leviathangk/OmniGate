@@ -45,24 +45,18 @@ pub async fn handle_claude_messages(
     
     let req_path = "/messages".to_string();
 
-
     let plan = match state.balancer.get_routing_plan("claude") {
         Some(p) => p,
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),
     };
     
-    // We can try up to retry_count + 1 times total, but we might exhaust providers first
+    // 修复问题1：每个供应商独立重试 retry_count+1 次，耗尽后再换下一个供应商
     let max_attempts = plan.retry_count as usize + 1;
-    let mut attempt = 0;
     let mut last_error = String::new();
-    
+
     for provider in plan.providers.iter() {
-        if attempt >= max_attempts {
-            break;
-        }
-        
+        // --- 构建 URL 和 Headers（每个供应商只做一次）---
         let mut base_url = provider.api_url.trim_end_matches('/').to_string();
-        
         let has_version = {
             let parts: Vec<&str> = base_url.split('/').collect();
             if let Some(last) = parts.last() {
@@ -71,20 +65,18 @@ pub async fn handle_claude_messages(
                 false
             }
         };
-
         if !has_version {
             base_url = format!("{}/v1", base_url);
         }
-        
         let upstream_url = format!("{}/messages", base_url);
-        
+
         let mut req_headers = headers.clone();
         req_headers.remove("host");
         req_headers.remove("transfer-encoding");
         req_headers.remove("content-length");
         req_headers.remove("connection");
         req_headers.remove("accept-encoding");
-        
+
         let safe_key = provider.api_key.trim();
         if let Ok(val) = HeaderValue::from_str(safe_key) {
             if provider.protocol == "claude" {
@@ -98,64 +90,68 @@ pub async fn handle_claude_messages(
                 }
             }
         }
-        
-        let req = state.http_client.post(&upstream_url)
-            .headers(req_headers)
-            .body(body_bytes.clone());
-        let start_time = Instant::now();
 
-        // Implement timeout
-        let res_result = tokio::time::timeout(
-            Duration::from_secs(plan.timeout_seconds as u64),
-            req.send()
-        ).await;
+        // --- 针对同一个供应商重试 max_attempts 次 ---
+        for _attempt in 0..max_attempts {
+            let req = state.http_client.post(&upstream_url)
+                .headers(req_headers.clone())
+                .body(body_bytes.clone());
+            let start_time = Instant::now();
 
-        match res_result {
-            Ok(Ok(res)) => {
-                let status = res.status();
-                if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
-                    let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
-                    last_error = format!("HTTP {} - {}", status, body_text);
-                    let latency = start_time.elapsed().as_millis() as u32;
-                    
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, Some(&last_error));
-                    attempt += 1;
-                    continue;
-                }
-                
-                let mut response_builder = Response::builder().status(status);
-                for (k, v) in res.headers().iter() {
-                    let k_str = k.as_str().to_lowercase();
-                    if k_str != "transfer-encoding" && k_str != "content-encoding" && k_str != "content-length" && k_str != "connection" {
-                        response_builder = response_builder.header(k, v);
+            let res_result = tokio::time::timeout(
+                Duration::from_secs(plan.timeout_seconds as u64),
+                req.send()
+            ).await;
+
+            match res_result {
+                Ok(Ok(res)) => {
+                    let status = res.status();
+                    if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
+                        // 可重试错误：继续重试同一供应商
+                        let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
+                        last_error = format!("HTTP {} - {}", status, body_text);
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, Some(&last_error));
+                        continue; // 重试同一供应商
                     }
+
+                    // 成功：直接透传流式响应
+                    let mut response_builder = Response::builder().status(status);
+                    for (k, v) in res.headers().iter() {
+                        let k_str = k.as_str().to_lowercase();
+                        if k_str != "transfer-encoding" && k_str != "content-encoding" && k_str != "content-length" && k_str != "connection" {
+                            response_builder = response_builder.header(k, v);
+                        }
+                    }
+                    let latency = start_time.elapsed().as_millis() as u32;
+                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, None);
+                    let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                    let body = Body::from_stream(stream);
+                    return Ok(response_builder.body(body).unwrap());
                 }
-                let latency = start_time.elapsed().as_millis() as u32;
-                
-                let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, None);
-                let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
-                let body = Body::from_stream(stream);
-                return Ok(response_builder.body(body).unwrap());
-            }
-            _ => {
-                last_error = "Timeout or network error".to_string();
-                let latency = start_time.elapsed().as_millis() as u32;
-                
-                let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 504, latency, Some(&last_error));
-                attempt += 1;
-                continue;
+                Ok(Err(e)) => {
+                    last_error = format!("Reqwest error: {}", e);
+                    let latency = start_time.elapsed().as_millis() as u32;
+                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 502, latency, Some(&last_error));
+                    continue; // 重试同一供应商
+                }
+                Err(e) => {
+                    last_error = format!("Timeout: {}", e);
+                    let latency = start_time.elapsed().as_millis() as u32;
+                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 504, latency, Some(&last_error));
+                    continue; // 重试同一供应商
+                }
             }
         }
+        // 该供应商所有次数耗尽，继续下一个供应商
     }
-    
-    {
-        let msg = if last_error.is_empty() {
-            "[OmniGate] 所有上游配置均请求失败。".to_string()
-        } else {
-            format!("[OmniGate] 上游请求失败: {}", last_error)
-        };
-        Ok(build_json_error(StatusCode::BAD_GATEWAY, "upstream_error", &msg).into_response())
-    }
+
+    let msg = if last_error.is_empty() {
+        "[OmniGate] 所有上游供应商均请求失败。".to_string()
+    } else {
+        format!("[OmniGate] 上游请求失败: {}", last_error)
+    };
+    Ok(build_json_error(StatusCode::BAD_GATEWAY, "upstream_error", &msg).into_response())
 }
 
 pub async fn handle_opencode_chat(
@@ -185,23 +181,19 @@ pub async fn handle_codex_proxy(
         "unknown".to_string()
     };
 
-
     let req_path = path.clone();
     let plan = match state.balancer.get_routing_plan("codex") {
         Some(p) => p,
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),
     };
+
+    // 修复问题1：每个供应商独立重试 retry_count+1 次
     let max_attempts = plan.retry_count as usize + 1;
-    let mut attempt = 0;
     let mut last_error = String::new();
-    
+
     for provider in plan.providers.iter() {
-        if attempt >= max_attempts {
-            break;
-        }
-        
+        // --- 构建 URL 和 Headers（每个供应商只做一次）---
         let mut base_url = provider.api_url.trim_end_matches('/').to_string();
-        
         let has_version = {
             let parts: Vec<&str> = base_url.split('/').collect();
             if let Some(last) = parts.last() {
@@ -210,35 +202,34 @@ pub async fn handle_codex_proxy(
                 false
             }
         };
-
         if !has_version {
             base_url = format!("{}/v1", base_url);
         }
 
         let mapped_path = if path == "/responses" || path == "/v1/responses" {
             if provider.protocol == "claude" {
-                "/messages"
+                "/messages".to_string()
             } else {
-                "/responses" // Codex protocol strictly uses /v1/responses
+                "/responses".to_string()
             }
         } else {
-            // Remove /v1 prefix if path already has it, because base_url has /v1
+            // 去除路径中已有的 /v1 前缀（base_url 已包含 /v1）
             if path.starts_with("/v1/") {
-                path.strip_prefix("/v1").unwrap_or(&path)
+                path.strip_prefix("/v1").unwrap_or(&path).to_string()
             } else {
-                &path
+                path.clone()
             }
         };
 
         let upstream_url = format!("{}{}{}", base_url, mapped_path, query);
-        
+
         let mut req_headers = headers.clone();
         req_headers.remove("host");
         req_headers.remove("transfer-encoding");
         req_headers.remove("content-length");
         req_headers.remove("connection");
         req_headers.remove("accept-encoding");
-        
+
         let safe_key = provider.api_key.trim();
         if let Ok(val) = HeaderValue::from_str(safe_key) {
             if provider.protocol == "claude" {
@@ -252,74 +243,70 @@ pub async fn handle_codex_proxy(
                 }
             }
         }
-        
-        let req = state.http_client.request(method.clone(), &upstream_url)
-            .headers(req_headers)
-            .body(body_bytes.clone());
-        let start_time = Instant::now();
-            
-        let res_result = tokio::time::timeout(
-            Duration::from_secs(plan.timeout_seconds as u64),
-            req.send()
-        ).await;
 
-        match res_result {
-            Ok(Ok(res)) => {
-                let status = res.status();
-                println!("Upstream {} returned status: {}", upstream_url, status);
-                if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
-                    let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
-                    last_error = format!("HTTP {} - {}", status, body_text);
-                    let latency = start_time.elapsed().as_millis() as u32;
-                    
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, Some(&last_error));
-                    attempt += 1;
-                    continue;
-                }
-                
-                let mut response_builder = Response::builder().status(status);
-                for (k, v) in res.headers().iter() {
-                    let k_str = k.as_str().to_lowercase();
-                    if k_str != "transfer-encoding" && k_str != "content-encoding" && k_str != "content-length" && k_str != "connection" {
-                        response_builder = response_builder.header(k, v);
+        // --- 针对同一个供应商重试 max_attempts 次 ---
+        for _attempt in 0..max_attempts {
+            let req = state.http_client.request(method.clone(), &upstream_url)
+                .headers(req_headers.clone())
+                .body(body_bytes.clone());
+            let start_time = Instant::now();
+
+            let res_result = tokio::time::timeout(
+                Duration::from_secs(plan.timeout_seconds as u64),
+                req.send()
+            ).await;
+
+            match res_result {
+                Ok(Ok(res)) => {
+                    let status = res.status();
+                    if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
+                        // 可重试错误：继续重试同一供应商
+                        let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
+                        last_error = format!("HTTP {} - {}", status, body_text);
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, Some(&last_error));
+                        continue; // 重试同一供应商
                     }
+
+                    // 成功：直接透传流式响应
+                    let mut response_builder = Response::builder().status(status);
+                    for (k, v) in res.headers().iter() {
+                        let k_str = k.as_str().to_lowercase();
+                        if k_str != "transfer-encoding" && k_str != "content-encoding" && k_str != "content-length" && k_str != "connection" {
+                            response_builder = response_builder.header(k, v);
+                        }
+                    }
+                    let latency = start_time.elapsed().as_millis() as u32;
+                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, None);
+                    let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                    let body = Body::from_stream(stream);
+                    return Ok(response_builder.body(body).unwrap());
                 }
-                let latency = start_time.elapsed().as_millis() as u32;
-                
-                let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, None);
-                let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
-                let body = Body::from_stream(stream);
-                return Ok(response_builder.body(body).unwrap());
-            }
-            Ok(Err(e)) => {
-                last_error = format!("Reqwest error: {}", e);
-                eprintln!("Upstream reqwest error: {}", e);
-                let latency = start_time.elapsed().as_millis() as u32;
-                
-                let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 502, latency, Some(&last_error));
-                attempt += 1;
-                continue;
-            }
-            Err(e) => {
-                last_error = format!("Timeout error: {}", e);
-                eprintln!("Upstream timeout error: {}", e);
-                let latency = start_time.elapsed().as_millis() as u32;
-                
-                let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 504, latency, Some(&last_error));
-                attempt += 1;
-                continue;
+                Ok(Err(e)) => {
+                    last_error = format!("Reqwest error: {}", e);
+                    eprintln!("[OmniGate] Provider {} reqwest error: {}", provider.name, e);
+                    let latency = start_time.elapsed().as_millis() as u32;
+                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 502, latency, Some(&last_error));
+                    continue; // 重试同一供应商
+                }
+                Err(e) => {
+                    last_error = format!("Timeout: {}", e);
+                    eprintln!("[OmniGate] Provider {} timeout: {}", provider.name, e);
+                    let latency = start_time.elapsed().as_millis() as u32;
+                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 504, latency, Some(&last_error));
+                    continue; // 重试同一供应商
+                }
             }
         }
+        // 该供应商所有次数耗尽，继续下一个供应商
     }
-    
-    {
-        let msg = if last_error.is_empty() {
-            "[OmniGate] 所有上游配置均请求失败。".to_string()
-        } else {
-            format!("[OmniGate] 上游请求失败: {}", last_error)
-        };
-        Ok(build_json_error(StatusCode::BAD_GATEWAY, "upstream_error", &msg).into_response())
-    }
+
+    let msg = if last_error.is_empty() {
+        "[OmniGate] 所有上游供应商均请求失败。".to_string()
+    } else {
+        format!("[OmniGate] 上游请求失败: {}", last_error)
+    };
+    Ok(build_json_error(StatusCode::BAD_GATEWAY, "upstream_error", &msg).into_response())
 }
 
 pub async fn handle_fallback(
