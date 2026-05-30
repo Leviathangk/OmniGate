@@ -70,6 +70,27 @@ pub struct UsageOverview {
     pub today_tokens_growth: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientProviderDto {
+    pub id: String,
+    pub name: String,
+    pub api_url: String,
+    pub protocol: String,
+    pub weight: u32,
+    pub sort_order: u32,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientConfigDto {
+    pub client_id: String,
+    pub is_enabled: bool,
+    pub strategy: String,
+    pub retry_count: u32,
+    pub timeout_seconds: u32,
+    pub providers: Vec<ClientProviderDto>,
+}
+
 // ============================================================================
 // 供应商命令
 // ============================================================================
@@ -313,4 +334,213 @@ pub async fn discover_models(
     }).collect();
 
     Ok(dtos)
+}
+
+// ============================================================================
+// Codex 本地接管
+// ============================================================================
+
+use std::fs;
+use std::path::PathBuf;
+use toml_edit::{DocumentMut, value, Item, Table};
+
+fn get_codex_dir() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".codex")
+    } else {
+        PathBuf::from("/Users/guokai/.codex")
+    }
+}
+
+#[tauri::command]
+pub fn get_codex_provider_name() -> Result<Option<String>, String> {
+    let temp_dir = get_codex_dir();
+    let config_path = temp_dir.join("config.toml");
+    if !config_path.exists() {
+        return Ok(None);
+    }
+    
+    let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let doc = content.parse::<DocumentMut>().map_err(|e| e.to_string())?;
+    
+    if let Some(provider) = doc.get("model_provider").and_then(|i| i.as_str()) {
+        Ok(Some(provider.to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub fn hijack_codex_config(
+    provider_name: String, 
+    base_url: String, 
+    proxy_api_key: String,
+    state: tauri::State<'_, crate::AppState>
+) -> Result<(), String> {
+    if !state.proxy_running.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("端口 3456 已被占用，网关服务启动失败！请尝试释放该端口（例如旧版的 OmniGate 残留）后重启客户端。".to_string());
+    }
+
+    let temp_dir = get_codex_dir();
+    if !temp_dir.exists() {
+        fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+    }
+    
+    // 1. 修改 config.toml
+    let config_path = temp_dir.join("config.toml");
+    let config_bak_path = temp_dir.join("config.toml.bak");
+    
+    if config_path.exists() && !config_bak_path.exists() {
+        fs::copy(&config_path, &config_bak_path).map_err(|e| e.to_string())?;
+    }
+    
+    let mut doc = if config_path.exists() {
+        let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+        content.parse::<DocumentMut>().map_err(|e| e.to_string())?
+    } else {
+        DocumentMut::new()
+    };
+    
+    doc["model_provider"] = value(&provider_name);
+    
+    if !doc.contains_key("model_providers") {
+        doc["model_providers"] = Item::Table(Table::new());
+    }
+    
+    if let Some(providers_table) = doc["model_providers"].as_table_mut() {
+        if !providers_table.contains_key(&provider_name) {
+            providers_table.insert(&provider_name, Item::Table(Table::new()));
+        }
+        
+        if let Some(provider_item) = providers_table.get_mut(&provider_name) {
+            provider_item["base_url"] = value(format!("{}/codex", base_url.trim_end_matches('/')));
+            provider_item["name"] = value(&provider_name);
+        }
+    }
+    
+    fs::write(&config_path, doc.to_string()).map_err(|e| e.to_string())?;
+    
+    // 2. 修改 auth.json
+    let auth_path = temp_dir.join("auth.json");
+    let auth_bak_path = temp_dir.join("auth.json.bak");
+    
+    if auth_path.exists() && !auth_bak_path.exists() {
+        fs::copy(&auth_path, &auth_bak_path).map_err(|e| e.to_string())?;
+    }
+    
+    let mut auth_json: serde_json::Value = if auth_path.exists() {
+        let content = fs::read_to_string(&auth_path).unwrap_or_else(|_| "{}".to_string());
+        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    
+    if let Some(obj) = auth_json.as_object_mut() {
+        for (_, val) in obj.iter_mut() {
+            if val.is_string() {
+                *val = serde_json::Value::String(proxy_api_key.clone());
+            }
+        }
+    }
+    
+    fs::write(&auth_path, serde_json::to_string_pretty(&auth_json).unwrap()).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restore_codex_config() -> Result<(), String> {
+    let temp_dir = get_codex_dir();
+    
+    let config_path = temp_dir.join("config.toml");
+    let config_bak_path = temp_dir.join("config.toml.bak");
+    
+    if config_bak_path.exists() {
+        fs::copy(&config_bak_path, &config_path).map_err(|e| e.to_string())?;
+        fs::remove_file(&config_bak_path).map_err(|e| e.to_string())?;
+    }
+    
+    let auth_path = temp_dir.join("auth.json");
+    let auth_bak_path = temp_dir.join("auth.json.bak");
+    
+    if auth_bak_path.exists() {
+        fs::copy(&auth_bak_path, &auth_path).map_err(|e| e.to_string())?;
+        fs::remove_file(&auth_bak_path).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+// ============================================================================
+// Client Config
+// ============================================================================
+
+#[tauri::command]
+pub fn get_client_configs(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<Vec<ClientConfigDto>, String> {
+    let configs = state.db.get_client_configs()?;
+    let config_providers = state.db.get_client_config_providers()?;
+    let all_providers = state.db.get_all_providers()?;
+
+    let mut provider_map = HashMap::new();
+    for p in all_providers {
+        provider_map.insert(p.id.clone(), p);
+    }
+
+    let mut result = Vec::new();
+    for c in configs {
+        let mut providers = Vec::new();
+        for cp in config_providers.iter().filter(|x| x.client_id == c.client_id) {
+            if let Some(p) = provider_map.get(&cp.provider_id) {
+                providers.push(ClientProviderDto {
+                    id: p.id.clone(),
+                    name: p.name.clone(),
+                    api_url: p.api_url.clone(),
+                    protocol: p.protocol.clone(),
+                    weight: cp.weight,
+                    sort_order: cp.sort_order,
+                    is_active: cp.is_active,
+                });
+            }
+        }
+        result.push(ClientConfigDto {
+            client_id: c.client_id,
+            is_enabled: c.is_enabled,
+            strategy: c.strategy,
+            retry_count: c.retry_count,
+            timeout_seconds: c.timeout_seconds,
+            providers,
+        });
+    }
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn save_client_configs(
+    configs: Vec<ClientConfigDto>,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    for c in configs {
+        let config_row = crate::database::ClientConfigRow {
+            client_id: c.client_id.clone(),
+            is_enabled: c.is_enabled,
+            strategy: c.strategy.clone(),
+            retry_count: c.retry_count,
+            timeout_seconds: c.timeout_seconds,
+        };
+        let mut provider_rows = Vec::new();
+        for p in c.providers {
+            provider_rows.push(crate::database::ClientConfigProviderRow {
+                client_id: c.client_id.clone(),
+                provider_id: p.id.clone(),
+                weight: p.weight,
+                sort_order: p.sort_order,
+                is_active: p.is_active,
+            });
+        }
+        state.db.save_client_config(&config_row, &provider_rows)?;
+    }
+    Ok(())
 }

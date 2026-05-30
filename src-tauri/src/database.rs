@@ -54,6 +54,22 @@ pub struct SkillRow {
     pub is_active: bool,
 }
 
+pub struct ClientConfigRow {
+    pub client_id: String,
+    pub is_enabled: bool,
+    pub strategy: String,
+    pub retry_count: u32,
+    pub timeout_seconds: u32,
+}
+
+pub struct ClientConfigProviderRow {
+    pub client_id: String,
+    pub provider_id: String,
+    pub weight: u32,
+    pub sort_order: u32,
+    pub is_active: bool,
+}
+
 // ============================================================================
 // DbManager
 // ============================================================================
@@ -165,6 +181,36 @@ impl DbManager {
             );",
             [],
         ).map_err(|e| e.to_string())?;
+
+        // 6. 客户端配置基础表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS client_configs (
+                client_id TEXT PRIMARY KEY,
+                is_enabled INTEGER DEFAULT 1,
+                strategy TEXT NOT NULL,
+                retry_count INTEGER NOT NULL,
+                timeout_seconds INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+            [],
+        ).map_err(|e| e.to_string())?;
+
+        // 7. 客户端配置的供应商绑定表 (多对多)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS client_config_providers (
+                client_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                weight INTEGER DEFAULT 1,
+                is_active INTEGER DEFAULT 1,
+                PRIMARY KEY (client_id, provider_id),
+                FOREIGN KEY (client_id) REFERENCES client_configs(client_id) ON DELETE CASCADE,
+                FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+            );",
+            [],
+        ).map_err(|e| e.to_string())?;
+
+        // 尝试添加 sort_order 字段（如果已存在会忽略错误）
+        let _ = conn.execute("ALTER TABLE client_config_providers ADD COLUMN sort_order INTEGER DEFAULT 0;", []);
 
         Ok(())
     }
@@ -400,5 +446,80 @@ impl DbManager {
             "SELECT COUNT(*) FROM skills WHERE is_active = 1;", [], |r| r.get(0)
         ).map_err(|e| e.to_string())?;
         Ok((total as usize, active as usize))
+    }
+
+    // ============================================================================
+    // Client Config CRUD
+    // ============================================================================
+
+    pub fn get_client_configs(&self) -> Result<Vec<ClientConfigRow>, String> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT client_id, is_enabled, strategy, retry_count, timeout_seconds FROM client_configs;"
+        ).map_err(|e| e.to_string())?;
+        
+        let rows = stmt.query_map([], |row| {
+            Ok(ClientConfigRow {
+                client_id: row.get(0)?,
+                is_enabled: row.get::<_, i64>(1)? != 0,
+                strategy: row.get(2)?,
+                retry_count: row.get::<_, u32>(3)?,
+                timeout_seconds: row.get::<_, u32>(4)?,
+            })
+        }).map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+        
+        Ok(rows)
+    }
+
+    pub fn get_client_config_providers(&self) -> Result<Vec<ClientConfigProviderRow>, String> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT client_id, provider_id, weight, is_active, sort_order FROM client_config_providers ORDER BY sort_order ASC;"
+        ).map_err(|e| e.to_string())?;
+        
+        let rows = stmt.query_map([], |row| {
+            Ok(ClientConfigProviderRow {
+                client_id: row.get(0)?,
+                provider_id: row.get(1)?,
+                weight: row.get::<_, u32>(2)?,
+                is_active: row.get::<_, i64>(3)? != 0,
+                sort_order: row.get::<_, u32>(4).unwrap_or(0),
+            })
+        }).map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+        
+        Ok(rows)
+    }
+
+    pub fn save_client_config(&self, config: &ClientConfigRow, providers: &[ClientConfigProviderRow]) -> Result<(), String> {
+        let mut conn = self.conn.lock().unwrap();
+        let now = Utc::now().timestamp_millis();
+        
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        
+        tx.execute(
+            "INSERT OR REPLACE INTO client_configs (client_id, is_enabled, strategy, retry_count, timeout_seconds, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
+            rusqlite::params![config.client_id, config.is_enabled as i64, config.strategy, config.retry_count, config.timeout_seconds, now],
+        ).map_err(|e| e.to_string())?;
+        
+        tx.execute(
+            "DELETE FROM client_config_providers WHERE client_id = ?1;",
+            rusqlite::params![config.client_id],
+        ).map_err(|e| e.to_string())?;
+        
+        for (i, p) in providers.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO client_config_providers (client_id, provider_id, weight, is_active, sort_order)
+                 VALUES (?1, ?2, ?3, ?4, ?5);",
+                rusqlite::params![p.client_id, p.provider_id, p.weight, p.is_active as i64, i as u32],
+            ).map_err(|e| e.to_string())?;
+        }
+        
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
     }
 }

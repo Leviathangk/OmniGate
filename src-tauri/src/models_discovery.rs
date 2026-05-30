@@ -295,11 +295,22 @@ pub fn extract_family(model_id: &str) -> String {
 /// - 如果 api_url ends_with("/v1")：endpoint = api_url + "/models"
 /// - 否则：endpoint = api_url.trim_end_matches('/') + "/v1/models"
 fn build_models_endpoint(api_url: &str) -> String {
-    if api_url.ends_with("/v1") {
-        format!("{}/models", api_url)
-    } else {
-        format!("{}/v1/models", api_url.trim_end_matches('/'))
+    let mut base_url = api_url.trim_end_matches('/').to_string();
+    
+    let has_version = {
+        let parts: Vec<&str> = base_url.split('/').collect();
+        if let Some(last) = parts.last() {
+            last.starts_with('v') && last.len() > 1 && last[1..].chars().all(|c| c.is_ascii_digit())
+        } else {
+            false
+        }
+    };
+
+    if !has_version {
+        base_url = format!("{}/v1", base_url);
     }
+    
+    format!("{}/models", base_url)
 }
 
 // ============================================================================

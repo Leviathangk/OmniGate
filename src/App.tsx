@@ -31,7 +31,10 @@ import {
   X,
   Minus,
   ListPlus,
-  RotateCw
+  RotateCw,
+  AlertTriangle,
+  Zap,
+  FileText
 } from "lucide-react";
 import "./App.css";
 
@@ -140,8 +143,9 @@ const getUrlPreview = (url: string, protocol: string) => {
   if (!url.trim()) return { discover: "-", forward: "-" };
   const trimmed = url.trim().replace(/\/+$/, ""); // 去除末尾斜杠
   
-  // discover 端点：claude/codex_responses 拼 /v1/models；codex_chat 直接拼 /models
-  const base = trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
+  // 判断末尾是否带有 /v数字 (如 /v1, /v4 等)
+  const hasVersion = /\/v\d+$/.test(trimmed);
+  const base = hasVersion ? trimmed : `${trimmed}/v1`;
 
   let discoverUrl: string;
   let forwardUrl: string;
@@ -151,11 +155,11 @@ const getUrlPreview = (url: string, protocol: string) => {
     forwardUrl  = `${base}/messages`;
   } else if (protocol === "codex_responses") {
     discoverUrl = `${base}/models`;
-    forwardUrl  = `${trimmed}/responses`;
+    forwardUrl  = `${base}/responses`;
   } else {
     // codex_chat
-    discoverUrl = `${trimmed}/models`;
-    forwardUrl  = `${trimmed}/chat/completions`;
+    discoverUrl = `${base}/models`;
+    forwardUrl  = `${base}/chat/completions`;
   }
 
   return { discover: discoverUrl, forward: forwardUrl };
@@ -622,6 +626,30 @@ function App() {
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
 
+  // Codex 拦截代理状态
+  const [hijackBaseUrl, setHijackBaseUrl] = useState("http://127.0.0.1:3456");
+  const [hijackApiKey, setHijackApiKey] = useState(() => {
+    const saved = localStorage.getItem("hijackApiKey");
+    if (saved) return saved;
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = 'sk-omnigate-';
+    for (let i = 0; i < 32; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    localStorage.setItem("hijackApiKey", result);
+    return result;
+  });
+  const [hijackProviderName, setHijackProviderName] = useState("custom");
+  const [hasFetchedHijackInfo, setHasFetchedHijackInfo] = useState(false);
+
+  const [toastMessage, setToastMessage] = useState("");
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => setToastMessage(""), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
+
   // UI交互与图表/客户端/设置状态
   const chartRequests: ChartPoint[] = [];
   const chartTokens: ChartPoint[] = [];
@@ -630,24 +658,24 @@ function App() {
   const [clientConfigs, setClientConfigs] = useState<ClientConfig[]>([
     {
       client_id: "claude",
-      is_enabled: true,
-      strategy: "随机切换 (负载均衡)",
+      is_enabled: false,
+      strategy: "priority",
       retry_count: 2,
       timeout_seconds: 30,
       providers: [],
     },
     {
       client_id: "codex",
-      is_enabled: true,
-      strategy: "轮询负载",
+      is_enabled: false,
+      strategy: "priority",
       retry_count: 3,
       timeout_seconds: 45,
       providers: [],
     },
     {
       client_id: "opencode",
-      is_enabled: true,
-      strategy: "优先级队列",
+      is_enabled: false,
+      strategy: "priority",
       retry_count: 2,
       timeout_seconds: 30,
       providers: [],
@@ -727,14 +755,57 @@ function App() {
     }
   }, [darkMode]);
 
+  // 当用户切到设置页时，读取本地配置
+  useEffect(() => {
+    if (activeTab === "settings" && !hasFetchedHijackInfo) {
+      invoke<string | null>("get_codex_provider_name")
+        .then(name => {
+          if (name) {
+            setHijackProviderName(name);
+          }
+          setHasFetchedHijackInfo(true);
+        })
+        .catch(e => console.error(e));
+    }
+  }, [activeTab, hasFetchedHijackInfo, hijackApiKey]);
+
+  const generateRandomKey = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = 'sk-omnigate-';
+    for (let i = 0; i < 32; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setHijackApiKey(result);
+    localStorage.setItem("hijackApiKey", result);
+  };
+
+  const handleHijackCodex = () => {
+    if (!hijackApiKey) {
+      alert("请先生成或输入接管凭证 (Proxy API Key)");
+      return;
+    }
+    invoke("hijack_codex_config", {
+      providerName: hijackProviderName,
+      baseUrl: hijackBaseUrl,
+      proxyApiKey: hijackApiKey
+    }).then(() => {
+      alert("Codex 配置文件修改成功，已接管！");
+    }).catch(e => {
+      alert(`接管失败: ${e}`);
+    });
+  };
+
+  const [isClientConfigsLoaded, setIsClientConfigsLoaded] = useState(false);
+
   // 加载核心数据（从真实 SQLite 后端）
   const loadData = async () => {
     try {
-      const [overview, provList, mcpList, skillList] = await Promise.all([
+      const [overview, provList, mcpList, skillList, loadedClientConfigs] = await Promise.all([
         invoke<UsageOverview>("get_usage_overview"),
         invoke<Provider[]>("get_providers"),
         invoke<McpServer[]>("get_mcp_servers"),
         invoke<Skill[]>("get_skills"),
+        invoke<ClientConfig[]>("get_client_configs"),
       ]);
       setOverviewData(overview);
       setProviders(provList);
@@ -745,6 +816,36 @@ function App() {
         setEditingSkillId(first.id);
         setSkillEditorContent(first.content);
       }
+      let targetConfigs = loadedClientConfigs;
+      if (loadedClientConfigs && loadedClientConfigs.length > 0) {
+        setClientConfigs(loadedClientConfigs);
+      } else {
+        // Init with default configs if DB is empty
+        await invoke("save_client_configs", { configs: clientConfigs });
+        targetConfigs = clientConfigs;
+      }
+      
+      // 保证应用启动时配置文件的一致性
+      if (targetConfigs) {
+        const codexCfg = targetConfigs.find((c: ClientConfig) => c.client_id === "codex");
+        if (codexCfg && codexCfg.is_enabled) {
+          // 如果启动时状态是开启的，为了防止文件被人为修改或未生效，强制刷新接管
+          invoke("hijack_codex_config", {
+            providerName: hijackProviderName || "custom",
+            baseUrl: hijackBaseUrl || "http://127.0.0.1:3456",
+            proxyApiKey: hijackApiKey || "sk-omnigate-fallback"
+          }).catch((e) => {
+            console.error("启动接管失败:", e);
+            setClientConfigs(prev => prev.map(c => c.client_id === "codex" ? { ...c, is_enabled: false } : c));
+            alert(String(e));
+          });
+        } else {
+          // 如果启动时状态是关闭的，强制执行还原操作清除接管
+          invoke("restore_codex_config").catch(console.error);
+        }
+      }
+      
+      setIsClientConfigsLoaded(true);
     } catch (err) {
       console.error("加载数据失败:", err);
     }
@@ -753,6 +854,14 @@ function App() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // 自动保存客户端配置
+  useEffect(() => {
+    if (isClientConfigsLoaded) {
+      invoke("save_client_configs", { configs: clientConfigs })
+        .catch(e => console.error("自动保存客户端配置失败:", e));
+    }
+  }, [clientConfigs, isClientConfigsLoaded]);
 
   // 当选择 of 编辑技能变化时
   useEffect(() => {
@@ -843,8 +952,43 @@ function App() {
 
 
 
-  const handleToggleClient = (clientId: string) => {
-    setClientConfigs(prev => prev.map(c => c.client_id === clientId ? { ...c, is_enabled: !c.is_enabled } : c));
+  const handleToggleClient = async (clientId: string) => {
+    const config = clientConfigs.find(c => c.client_id === clientId);
+    if (!config) return;
+    const newEnabledState = !config.is_enabled;
+
+    setClientConfigs(prev => prev.map(c => c.client_id === clientId ? { ...c, is_enabled: newEnabledState } : c));
+
+    if (clientId === "codex") {
+      if (!newEnabledState) {
+        // Toggled OFF -> restore original config
+        try {
+          await invoke("restore_codex_config");
+          console.log("已还原 Codex 配置文件");
+        } catch (e) {
+          console.error("还原 Codex 配置失败", e);
+        }
+      } else {
+        // Toggled ON -> hijack config
+        try {
+          if (!hijackApiKey) {
+            // Give it a tiny delay to wait for random key generation if it was just loaded
+            await new Promise(r => setTimeout(r, 100));
+          }
+          await invoke("hijack_codex_config", {
+            providerName: hijackProviderName || "custom",
+            baseUrl: hijackBaseUrl || "http://127.0.0.1:3456",
+            proxyApiKey: hijackApiKey || "sk-omnigate-fallback"
+          });
+          console.log("已接管 Codex 配置文件");
+        } catch (e) {
+          console.error("接管 Codex 配置失败", e);
+          alert(String(e));
+          // 还原状态
+          setClientConfigs(prev => prev.map(c => c.client_id === clientId ? { ...c, is_enabled: false } : c));
+        }
+      }
+    }
   };
 
   const handleStrategyChange = (clientId: string, strategy: string) => {
@@ -870,6 +1014,23 @@ function App() {
           ...c,
           providers: c.providers.map(p => p.id === providerId ? { ...p, is_active: !p.is_active } : p)
         };
+      }
+      return c;
+    }));
+  };
+
+  const handleMoveProvider = (clientId: string, index: number, direction: number) => {
+    setClientConfigs(prev => prev.map(c => {
+      if (c.client_id === clientId) {
+        const newProviders = [...c.providers];
+        const newIndex = index + direction;
+        if (newIndex >= 0 && newIndex < newProviders.length) {
+          // Swap elements
+          const temp = newProviders[index];
+          newProviders[index] = newProviders[newIndex];
+          newProviders[newIndex] = temp;
+        }
+        return { ...c, providers: newProviders };
       }
       return c;
     }));
@@ -1038,6 +1199,30 @@ function App() {
 
   return (
     <div className="app-container">
+      {/* 顶部居中 Toast 弹窗 */}
+      {toastMessage && (
+        <div style={{
+          position: "fixed",
+          top: "20px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          backgroundColor: "hsl(var(--danger))",
+          color: "white",
+          padding: "12px 24px",
+          borderRadius: "8px",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+          zIndex: 9999,
+          fontWeight: "600",
+          fontSize: "0.9rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px"
+        }}>
+          <AlertTriangle size={18} />
+          {toastMessage}
+        </div>
+      )}
+
       {/* ============================================================================
           SIDEBAR NAVIGATION (Vector Lucide Icons)
          ============================================================================ */}
@@ -1106,13 +1291,8 @@ function App() {
             </li>
             <li className="menu-item" style={{ cursor: "default" }}>
               <div className="menu-icon" style={{ color: "hsl(var(--secondary))" }}><Terminal size={16} /></div>
-              <span>Codex Responses</span>
-              <div className={`client-status-dot ${clientConfigs.find(c => c.client_id === "codex_responses")?.is_enabled ? "active" : "inactive"}`}></div>
-            </li>
-            <li className="menu-item" style={{ cursor: "default" }}>
-              <div className="menu-icon" style={{ color: "hsl(var(--success))" }}><Share2 size={16} /></div>
-              <span>Codex Chat</span>
-              <div className={`client-status-dot ${clientConfigs.find(c => c.client_id === "codex_chat")?.is_enabled ? "active" : "inactive"}`}></div>
+              <span>Codex</span>
+              <div className={`client-status-dot ${clientConfigs.find(c => c.client_id === "codex")?.is_enabled ? "active" : "inactive"}`}></div>
             </li>
             <li className="menu-item" style={{ cursor: "default" }}>
               <div className="menu-icon" style={{ color: "hsl(var(--warning))" }}><Sliders size={16} /></div>
@@ -1505,8 +1685,19 @@ function App() {
                             {config.providers.map((p, pIndex) => (
                               <tr key={pIndex}>
                                 <td>
-                                  <div className="drag-handle" style={{ display: "inline-flex" }}>
-                                    ☰ &nbsp; {pIndex + 1}
+                                  <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                                    <button 
+                                      className="btn-secondary" 
+                                      style={{ padding: "2px 4px", fontSize: "0.6rem" }} 
+                                      disabled={pIndex === 0}
+                                      onClick={() => handleMoveProvider(config.client_id, pIndex, -1)}
+                                    >↑</button>
+                                    <button 
+                                      className="btn-secondary" 
+                                      style={{ padding: "2px 4px", fontSize: "0.6rem" }} 
+                                      disabled={pIndex === config.providers.length - 1}
+                                      onClick={() => handleMoveProvider(config.client_id, pIndex, 1)}
+                                    >↓</button>
                                   </div>
                                 </td>
                                 <td style={{ fontWeight: "600" }}>
@@ -1632,7 +1823,41 @@ function App() {
                           ]}
                         />
                       </div>
+                      
+                      {config.client_id === "codex" && (
+                        <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+                          <label style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>Provider 名称 (model_provider)</span>
+                            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>自动读取: {hijackProviderName || "无"}</span>
+                          </label>
+                          <input 
+                            type="text" 
+                            className="modal-input" 
+                            value={hijackProviderName} 
+                            onChange={e => {
+                              setHijackProviderName(e.target.value);
+                              if (config.is_enabled) {
+                                setToastMessage("修改 Provider 名称后，必须重新关闭并开启上方「接管状态」才能在本地文件中生效！");
+                              }
+                            }} 
+                            placeholder="custom" 
+                          />
+                          <div style={{ marginTop: "8px", padding: "8px 12px", backgroundColor: "hsl(var(--warning) / 0.1)", border: "1px solid hsl(var(--warning) / 0.3)", borderRadius: "6px" }}>
+                            <span style={{ fontSize: "0.8rem", color: "hsl(var(--warning))", display: "flex", alignItems: "center", gap: "6px" }}>
+                              <AlertTriangle size={14} /> <strong>警告：</strong>修改该项可能导致 Codex 历史会话丢失，强烈不建议修改。
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
+                    
+                    <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid hsl(var(--border-color))", display: "flex", alignItems: "center", gap: "8px" }}>
+                      <FileText size={16} style={{ color: "var(--text-muted)" }} />
+                      <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                        <strong>目标配置文件目录:</strong> <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "2px 6px", borderRadius: "4px" }}>{config.client_id === "claude" ? "~/.claude" : config.client_id === "codex" ? "~/.codex" : "~/.opencode"}</code>
+                      </span>
+                    </div>
+
                   </div>
                 </div>
               ))}
@@ -1880,11 +2105,49 @@ function App() {
           {activeTab === "settings" && (
             <div>
               <div className="tabs-control-row">
-                <button className={`tab-select-btn ${settingsSubTab === "general" ? "active" : ""}`} onClick={() => setSettingsSubTab("general")}>通用配置</button>
-                <button className={`tab-select-btn ${settingsSubTab === "database" ? "active" : ""}`} onClick={() => setSettingsSubTab("database")}>数据库管理</button>
+                <button className={`tab-select-btn ${settingsSubTab === "proxy" ? "active" : ""}`} onClick={() => setSettingsSubTab("proxy")}>本地网关接管</button>
                 <button className={`tab-select-btn ${settingsSubTab === "client" ? "active" : ""}`} onClick={() => setSettingsSubTab("client")}>客户端全局</button>
+                <button className={`tab-select-btn ${settingsSubTab === "database" ? "active" : ""}`} onClick={() => setSettingsSubTab("database")}>数据库管理</button>
                 <button className={`tab-select-btn ${settingsSubTab === "about" ? "active" : ""}`} onClick={() => setSettingsSubTab("about")}>关于</button>
               </div>
+
+              {settingsSubTab === "proxy" && (
+                <div className="panel-card">
+                  <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "8px" }}>本地网关与客户端接管 (Codex)</h3>
+                  <p style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: "20px" }}>通过修改本地配置文件，优雅接管 Codex 流量到 OmniGate 代理网关。</p>
+                  
+                  <div className="form-group" style={{ marginBottom: "16px" }}>
+                    <label>代理服务基础 URL</label>
+                    <input 
+                      type="text" 
+                      className="modal-input" 
+                      value={hijackBaseUrl} 
+                      onChange={e => setHijackBaseUrl(e.target.value)} 
+                      placeholder="http://127.0.0.1:3456" 
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: "24px" }}>
+                    <label style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>接管凭证 (Proxy API Key)</span>
+                      <button className="btn-secondary" style={{ padding: "2px 8px", fontSize: "0.75rem" }} onClick={generateRandomKey}>
+                        随机生成
+                      </button>
+                    </label>
+                    <input 
+                      type="text" 
+                      className="modal-input" 
+                      value={hijackApiKey} 
+                      onChange={e => setHijackApiKey(e.target.value)} 
+                      placeholder="点击右上角随机生成..." 
+                    />
+                  </div>
+
+                  <button className="btn-primary" onClick={handleHijackCodex} style={{ width: "100%", justifyContent: "center", padding: "12px" }}>
+                    <Zap size={16} /> 一键接管 Codex 配置
+                  </button>
+                </div>
+              )}
 
               {settingsSubTab === "general" && (
                 <div className="panel-card">

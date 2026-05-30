@@ -1,13 +1,17 @@
 mod database;
 mod commands;
 pub mod models_discovery;
+mod proxy;
 
 use std::sync::Arc;
 use tauri::Manager;
 use database::DbManager;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 pub struct AppState {
     pub db: Arc<DbManager>,
+    pub proxy_running: Arc<AtomicBool>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -21,13 +25,24 @@ pub fn run() {
             
             match DbManager::init(config_dir) {
                 Ok(db) => {
-                    app.manage(AppState { db: Arc::new(db) });
+                    let db_arc = Arc::new(db);
+                    let proxy_running = Arc::new(AtomicBool::new(false));
+                    app.manage(AppState { 
+                        db: db_arc.clone(),
+                        proxy_running: proxy_running.clone(),
+                    });
+                    
+                    // Start proxy server on default port 3456
+                    tauri::async_runtime::spawn(async move {
+                        proxy::server::start_proxy_server(3456, db_arc, proxy_running).await;
+                    });
                 }
                 Err(e) => {
                     eprintln!("Failed to initialize database: {}", e);
                     // 即使数据库初始化失败，在开发/Mock阶段我们也可以继续启动
                 }
             }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -42,7 +57,12 @@ pub fn run() {
             commands::get_mcp_servers,
             commands::get_skills,
             commands::get_usage_overview,
-            commands::discover_models
+            commands::discover_models,
+            commands::get_codex_provider_name,
+            commands::hijack_codex_config,
+            commands::restore_codex_config,
+            commands::get_client_configs,
+            commands::save_client_configs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
