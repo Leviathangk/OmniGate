@@ -828,6 +828,9 @@ function App() {
   };
 
   const [isClientConfigsLoaded, setIsClientConfigsLoaded] = useState(false);
+  // 用 ref 记录是否已完成「首次从 DB 加载并设置状态」这两步，
+  // 避免 useEffect auto-save 在数据落定之前就用旧的初始值覆写 DB。
+  const clientConfigsReadyRef = useRef(false);
 
   // 加载核心数据（从真实 SQLite 后端）
   const loadData = async () => {
@@ -858,10 +861,23 @@ function App() {
       }
       let targetConfigs = loadedClientConfigs;
       if (loadedClientConfigs && loadedClientConfigs.length > 0) {
+        // 先把 ref 设为 true，再更新 state。
+        // 这样当 React 批处理完成并触发 useEffect 时，
+        // clientConfigs 已经是从 DB 加载的真实数据，不会用空列表覆写。
+        clientConfigsReadyRef.current = true;
         setClientConfigs(loadedClientConfigs);
       } else {
-        // Init with default configs if DB is empty
-        await invoke("save_client_configs", { configs: clientConfigs });
+        // DB 为空：直接用默认配置初始化，不经过 auto-save
+        clientConfigsReadyRef.current = false;
+        await invoke("save_client_configs", {
+          configs: [
+            { client_id: "claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
+            { client_id: "codex",  is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45, providers: [] },
+            { client_id: "opencode", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
+          ]
+        });
+        // 完成后允许 auto-save
+        clientConfigsReadyRef.current = true;
         targetConfigs = clientConfigs;
       }
       
@@ -869,7 +885,6 @@ function App() {
       if (targetConfigs) {
         const codexCfg = targetConfigs.find((c: ClientConfig) => c.client_id === "codex");
         if (codexCfg && codexCfg.is_enabled) {
-          // 如果启动时状态是开启的，为了防止文件被人为修改或未生效，强制刷新接管
           invoke("hijack_codex_config", {
             providerName: hijackProviderName || "custom",
             baseUrl: hijackBaseUrl || "http://127.0.0.1:3456",
@@ -880,7 +895,6 @@ function App() {
             alert(String(e));
           });
         } else {
-          // 如果启动时状态是关闭的，强制执行还原操作清除接管
           invoke("restore_codex_config").catch(console.error);
         }
       }
@@ -888,6 +902,9 @@ function App() {
       setIsClientConfigsLoaded(true);
     } catch (err) {
       console.error("加载数据失败:", err);
+      // 即使加载失败，也要开放 auto-save 阈值，否则用户操作永远不会被保存
+      clientConfigsReadyRef.current = true;
+      setIsClientConfigsLoaded(true);
     }
   };
 
@@ -895,13 +912,12 @@ function App() {
     loadData();
   }, []);
 
-  // 自动保存客户端配置
+  // 自动保存客户端配置：只有在数据已从 DB 加载并渲染后才执行
   useEffect(() => {
-    if (isClientConfigsLoaded) {
-      invoke("save_client_configs", { configs: clientConfigs })
-        .catch(e => console.error("自动保存客户端配置失败:", e));
-    }
-  }, [clientConfigs, isClientConfigsLoaded]);
+    if (!clientConfigsReadyRef.current) return;
+    invoke("save_client_configs", { configs: clientConfigs })
+      .catch(e => console.error("自动保存客户端配置失败:", e));
+  }, [clientConfigs]);
 
   // 当选择 of 编辑技能变化时
   useEffect(() => {
@@ -1811,7 +1827,7 @@ function App() {
                                                 setClientConfigs(prev => prev.map(c => {
                                                   if (c.client_id === config.client_id) {
                                                     if (c.providers.some(p => p.id === provider.id)) return c;
-                                                    return { ...c, providers: [...c.providers, { ...provider, weight: 1, is_active: true }] };
+                                                    return { ...c, providers: [...c.providers, { ...provider, weight: 1, is_active: true, sort_order: c.providers.length }] };
                                                   }
                                                   return c;
                                                 }));

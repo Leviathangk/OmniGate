@@ -77,6 +77,7 @@ pub struct ClientProviderDto {
     pub api_url: String,
     pub protocol: String,
     pub weight: u32,
+    #[serde(default)]
     pub sort_order: u32,
     pub is_active: bool,
 }
