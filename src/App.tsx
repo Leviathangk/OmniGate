@@ -724,7 +724,7 @@ function App() {
   });
 
   const [clientSubTab, setClientSubTab] = useState<string>("claude");
-  const [settingsSubTab, setSettingsSubTab] = useState<string>("general");
+  const [settingsSubTab, setSettingsSubTab] = useState<string>("proxy");
   const [showAddProviderModal, setShowAddProviderModal] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<number>(1);
   
@@ -1301,15 +1301,6 @@ function App() {
           </ul>
         </div>
 
-        <div className="menu-section">
-          <div className="menu-title">数据审计</div>
-          <ul className="menu-list">
-            <li className={`menu-item ${activeTab === "stats" ? "active" : ""}`} onClick={() => setActiveTab("stats")}>
-              <div className="menu-icon"><LineChart size={17} /></div>
-              <span>使用统计</span>
-            </li>
-          </ul>
-        </div>
 
         <div className="menu-section">
           <div className="menu-title">配置</div>
@@ -2028,106 +2019,6 @@ function App() {
             </div>
           )}
 
-          {/* ============================================================================
-              TAB: STATS (数据审计统计)
-             ============================================================================ */}
-          {activeTab === "stats" && (
-            <div>
-              <div className="tabs-control-row">
-                <button className="tab-select-btn active">调用热力图 (Heatmap)</button>
-                <button className="tab-select-btn" onClick={() => alert("功能开发中，可在热力图中直观查看趋势！")}>总览走势</button>
-                <button className="tab-select-btn" onClick={() => alert("功能开发中！")}>模型分析</button>
-                <button className="tab-select-btn" onClick={() => alert("功能开发中！")}>渠道分析</button>
-              </div>
-
-              <div className="panel-card">
-                <div className="card-header-row">
-                  <div>
-                    <h3>大模型调用密度热力图 (24H × 7D)</h3>
-                    <p style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>最近 7 天内不同小时时段的调用频次网格</p>
-                  </div>
-                  <div style={{ display: "flex", gap: "8px", fontSize: "0.8rem", color: "var(--text-secondary)", alignItems: "center" }}>
-                    <span>筛选周期:</span>
-                    <CustomSelect 
-                      value={statsPeriod} 
-                      onChange={(v) => setStatsPeriod(v)} 
-                      options={[
-                        { value: "7", label: "最近 7 天" },
-                        { value: "30", label: "最近 30 天" }
-                      ]}
-                      width="120px"
-                    />
-                  </div>
-                </div>
-
-                <div className="heatmap-grid">
-                  <div className="heatmap-days-col">
-                    <span>周一</span>
-                    <span>周二</span>
-                    <span>周三</span>
-                    <span>周四</span>
-                    <span>周五</span>
-                    <span>周六</span>
-                    <span>周日</span>
-                  </div>
-                  <div>
-                    <svg className="heatmap-svg" viewBox="0 0 740 180">
-                      <g transform="translate(10, 10)">
-                        {/* Generate 24 Columns for hours, 7 Rows for days */}
-                        {Array.from({ length: 24 }).map((_, colIdx) => (
-                          <g key={colIdx} transform={`translate(${colIdx * 28}, 0)`}>
-                            {Array.from({ length: 7 }).map((_, rowIdx) => {
-                              // Generate realistic gradient colors
-                              let opacity = 0.05;
-                              const hour = colIdx;
-                              // Wed has high volume
-                              if (rowIdx === 2) opacity += 0.3;
-                              // Peak times 14:00 - 16:00
-                              if (hour >= 14 && hour <= 16) opacity += 0.45;
-                              // Night drops
-                              if (hour >= 0 && hour <= 6) opacity -= 0.1;
-                              // Clamp opacity
-                              opacity = Math.max(0.05, Math.min(0.9, opacity));
-                              
-                              return (
-                                <rect key={rowIdx} y={rowIdx * 22} width="22" height="18" className="heatmap-rect" fill={`rgba(168, 85, 247, ${opacity})`} />
-                              );
-                            })}
-                            <text x="11" y="165" textAnchor="middle" fill="var(--text-muted)" fontSize="8px">{colIdx.toString().padStart(2, '0')}:00</text>
-                          </g>
-                        ))}
-                      </g>
-                    </svg>
-                  </div>
-                </div>
-
-                <div className="heatmap-legend-row">
-                  <span>较少</span>
-                  <div className="heatmap-legend-blocks">
-                    <span className="legend-block" style={{ backgroundColor: "rgba(168, 85, 247, 0.05)" }}></span>
-                    <span className="legend-block" style={{ backgroundColor: "rgba(168, 85, 247, 0.25)" }}></span>
-                    <span className="legend-block" style={{ backgroundColor: "rgba(168, 85, 247, 0.5)" }}></span>
-                    <span className="legend-block" style={{ backgroundColor: "rgba(168, 85, 247, 0.75)" }}></span>
-                    <span className="legend-block" style={{ backgroundColor: "rgba(168, 85, 247, 0.9)" }}></span>
-                  </div>
-                  <span>较多</span>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-                <div className="panel-card">
-                  <h4>🔥 高峰活跃时段</h4>
-                  <h3 style={{ fontSize: "2rem", fontFamily: "var(--font-display)", fontWeight: "700", marginTop: "12px", background: "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>14:00 - 16:00</h3>
-                  <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "6px" }}>在此区间平均吞吐速度达 <strong>245 次请求/小时</strong></p>
-                </div>
-                <div className="panel-card">
-                  <h4>🗓️ 最活跃星期日期</h4>
-                  <h3 style={{ fontSize: "2rem", fontFamily: "var(--font-display)", fontWeight: "700", marginTop: "12px", color: "hsl(var(--success))" }}>星期三</h3>
-                  <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "6px" }}>周三全天调用量峰值累计达到 <strong>2,451 次请求</strong></p>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* ============================================================================
               TAB: SETTINGS (系统全局设置)
@@ -2136,15 +2027,15 @@ function App() {
             <div>
               <div className="tabs-control-row">
                 <button className={`tab-select-btn ${settingsSubTab === "proxy" ? "active" : ""}`} onClick={() => setSettingsSubTab("proxy")}>本地网关接管</button>
-                <button className={`tab-select-btn ${settingsSubTab === "client" ? "active" : ""}`} onClick={() => setSettingsSubTab("client")}>客户端全局</button>
+
                 <button className={`tab-select-btn ${settingsSubTab === "database" ? "active" : ""}`} onClick={() => setSettingsSubTab("database")}>数据库管理</button>
                 <button className={`tab-select-btn ${settingsSubTab === "about" ? "active" : ""}`} onClick={() => setSettingsSubTab("about")}>关于</button>
               </div>
 
               {settingsSubTab === "proxy" && (
                 <div className="panel-card">
-                  <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "8px" }}>本地网关与客户端接管 (Codex)</h3>
-                  <p style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: "20px" }}>通过修改本地配置文件，优雅接管 Codex 流量到 OmniGate 代理网关。</p>
+                  <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "8px" }}>本地网关身份认证与接管配置</h3>
+                  <p style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: "20px" }}>配置并获取属于您的本地专属代理网关 URL 以及全局安全鉴权凭证。您可以将其填入任何支持自定义 Endpoint 的大模型客户端引擎中。</p>
                   
                   <div className="form-group" style={{ marginBottom: "16px" }}>
                     <label>代理服务基础 URL</label>
@@ -2173,56 +2064,6 @@ function App() {
                     />
                   </div>
 
-                  <button className="btn-primary" onClick={handleHijackCodex} style={{ width: "100%", justifyContent: "center", padding: "12px" }}>
-                    <Zap size={16} /> 一键接管 Codex 配置
-                  </button>
-                </div>
-              )}
-
-              {settingsSubTab === "general" && (
-                <div className="panel-card">
-                  <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "20px" }}>全局代理首选项</h3>
-                  
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-                    <div className="form-group">
-                      <label>默认接管客户端</label>
-                      <CustomSelect 
-                        value={globalSettings.default_client} 
-                        onChange={(v) => setGlobalSettings(prev => ({ ...prev, default_client: v }))}
-                        options={[
-                          { value: "Claude", label: "Claude Desktop / CLI" },
-                          { value: "Codex Responses", label: "Codex Responses" },
-                          { value: "Codex Chat", label: "Codex Chat" },
-                          { value: "OpenCode", label: "OpenCode" }
-                        ]}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label>全局负载策略</label>
-                      <CustomSelect 
-                        value={globalSettings.default_strategy} 
-                        onChange={(v) => setGlobalSettings(prev => ({ ...prev, default_strategy: v }))}
-                        options={[
-                          { value: "随机切换 (负载均衡)", label: "随机切换 (负载均衡)" },
-                          { value: "优先级顺序", label: "优先级顺序" },
-                          { value: "手动选择", label: "手动选择" }
-                        ]}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-group" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid hsl(var(--border-color))", paddingTop: "20px", marginTop: "10px" }}>
-                    <div>
-                      <h4 style={{ fontSize: "0.86rem", fontWeight: "600" }}>故障自动断路降级</h4>
-                      <p style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>当上游供应商通道遇到 429 或网络拥堵时，自动切换至降级供应商</p>
-                    </div>
-                    <div className="switch-container" onClick={() => setGlobalSettings(prev => ({ ...prev, auto_failover: !prev.auto_failover }))}>
-                      <div className={`switch-track ${globalSettings.auto_failover ? "active" : ""}`}>
-                        <div className="switch-thumb"></div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -2244,61 +2085,6 @@ function App() {
                 </div>
               )}
 
-              {settingsSubTab === "client" && (
-                <div className="panel-card">
-                  <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "20px" }}>全局网络与并发设置</h3>
-                  
-                  <div className="slider-group">
-                    <div className="slider-header">
-                      <span>单次请求超时限制 (Timeout)</span>
-                      <span className="slider-value">{globalSettings.global_timeout} 秒</span>
-                    </div>
-                    <div className="slider-control-row">
-                      <input type="range" min="10" max="300" step="10" value={globalSettings.global_timeout} onChange={(e) => setGlobalSettings(prev => ({ ...prev, global_timeout: Number(e.target.value) }))} />
-                    </div>
-                    <div className="slider-ticks">
-                      <span>10s</span>
-                      <span>60s</span>
-                      <span>120s</span>
-                      <span>300s</span>
-                    </div>
-                  </div>
-
-                  <div className="slider-group">
-                    <div className="slider-header">
-                      <span>最大失败重试上限 (Max Retries)</span>
-                      <span className="slider-value">{globalSettings.global_retry} 次</span>
-                    </div>
-                    <div className="slider-control-row">
-                      <input type="range" min="0" max="5" step="1" value={globalSettings.global_retry} onChange={(e) => setGlobalSettings(prev => ({ ...prev, global_retry: Number(e.target.value) }))} />
-                    </div>
-                    <div className="slider-ticks">
-                      <span>0次</span>
-                      <span>1次</span>
-                      <span>2次</span>
-                      <span>3次</span>
-                      <span>5次</span>
-                    </div>
-                  </div>
-
-                  <div className="slider-group">
-                    <div className="slider-header">
-                      <span>最大并发限制上限 (Concurrency Limit)</span>
-                      <span className="slider-value">{globalSettings.global_concurrency} 并发数</span>
-                    </div>
-                    <div className="slider-control-row">
-                      <input type="range" min="1" max="50" step="1" value={globalSettings.global_concurrency} onChange={(e) => setGlobalSettings(prev => ({ ...prev, global_concurrency: Number(e.target.value) }))} />
-                    </div>
-                    <div className="slider-ticks">
-                      <span>1个</span>
-                      <span>5个</span>
-                      <span>10个</span>
-                      <span>20个</span>
-                      <span>50个</span>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {settingsSubTab === "about" && (
                 <div className="panel-card" style={{ textAlign: "center", padding: "40px 20px" }}>
