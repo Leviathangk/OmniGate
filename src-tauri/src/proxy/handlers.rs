@@ -9,18 +9,42 @@ use super::router::AppState;
 use futures_util::TryStreamExt;
 use std::time::Duration;
 
+fn build_json_error(status: StatusCode, code: &str, message: &str) -> axum::response::Response {
+    let json_body = serde_json::json!({
+        "error": {
+            "message": message,
+            "type": "omnigate_proxy_error",
+            "param": serde_json::Value::Null,
+            "code": code
+        }
+    });
+    Response::builder()
+        .status(status)
+        .header("Content-Type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+        .into_response()
+}
+
 pub async fn handle_claude_messages(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     body: Body,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let body_bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|_| StatusCode::BAD_REQUEST)?;
+    let body_bytes = match axum::body::to_bytes(body, usize::MAX).await {
+        Ok(b) => b,
+        Err(_) => return Ok(build_json_error(StatusCode::BAD_REQUEST, "invalid_request", "[OmniGate] 无法解析传入的请求体数据。").into_response()),
+    };
 
-    let plan = state.balancer.get_routing_plan("claude").ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let plan = match state.balancer.get_routing_plan("claude") {
+        Some(p) => p,
+        None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),
+    };
     
     // We can try up to retry_count + 1 times total, but we might exhaust providers first
     let max_attempts = plan.retry_count as usize + 1;
     let mut attempt = 0;
+    let mut last_error = String::new();
     
     for provider in plan.providers.iter() {
         if attempt >= max_attempts {
@@ -79,8 +103,10 @@ pub async fn handle_claude_messages(
             Ok(Ok(res)) => {
                 let status = res.status();
                 if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
+                    let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
+                    last_error = format!("HTTP {} - {}", status, body_text);
                     attempt += 1;
-                    continue; // Retry next provider
+                    continue;
                 }
                 
                 let mut response_builder = Response::builder().status(status);
@@ -95,14 +121,21 @@ pub async fn handle_claude_messages(
                 return Ok(response_builder.body(body).unwrap());
             }
             _ => {
-                // Timeout or network error
+                last_error = "Timeout or network error".to_string();
                 attempt += 1;
                 continue;
             }
         }
     }
     
-    Err(StatusCode::BAD_GATEWAY)
+    {
+        let msg = if last_error.is_empty() {
+            "[OmniGate] 所有上游配置均请求失败。".to_string()
+        } else {
+            format!("[OmniGate] 上游请求失败: {}", last_error)
+        };
+        Ok(build_json_error(StatusCode::BAD_GATEWAY, "upstream_error", &msg).into_response())
+    }
 }
 
 pub async fn handle_opencode_chat(
@@ -121,11 +154,18 @@ pub async fn handle_codex_proxy(
     let path = request.uri().path().strip_prefix("/codex").unwrap_or(request.uri().path()).to_string();
     let query = request.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
     let method = request.method().clone();
-    let body_bytes = axum::body::to_bytes(request.into_body(), usize::MAX).await.map_err(|_| StatusCode::BAD_REQUEST)?;
+    let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(_) => return Ok(build_json_error(StatusCode::BAD_REQUEST, "invalid_request", "[OmniGate] 无法解析传入的请求体数据。").into_response()),
+    };
 
-    let plan = state.balancer.get_routing_plan("codex").ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let plan = match state.balancer.get_routing_plan("codex") {
+        Some(p) => p,
+        None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),
+    };
     let max_attempts = plan.retry_count as usize + 1;
     let mut attempt = 0;
+    let mut last_error = String::new();
     
     for provider in plan.providers.iter() {
         if attempt >= max_attempts {
@@ -199,8 +239,10 @@ pub async fn handle_codex_proxy(
                 let status = res.status();
                 println!("Upstream {} returned status: {}", upstream_url, status);
                 if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
+                    let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
+                    last_error = format!("HTTP {} - {}", status, body_text);
                     attempt += 1;
-                    continue; // Retry next
+                    continue;
                 }
                 
                 let mut response_builder = Response::builder().status(status);
@@ -215,11 +257,13 @@ pub async fn handle_codex_proxy(
                 return Ok(response_builder.body(body).unwrap());
             }
             Ok(Err(e)) => {
+                last_error = format!("Reqwest error: {}", e);
                 eprintln!("Upstream reqwest error: {}", e);
                 attempt += 1;
                 continue;
             }
             Err(e) => {
+                last_error = format!("Timeout error: {}", e);
                 eprintln!("Upstream timeout error: {}", e);
                 attempt += 1;
                 continue;
@@ -227,7 +271,14 @@ pub async fn handle_codex_proxy(
         }
     }
     
-    Err(StatusCode::BAD_GATEWAY)
+    {
+        let msg = if last_error.is_empty() {
+            "[OmniGate] 所有上游配置均请求失败。".to_string()
+        } else {
+            format!("[OmniGate] 上游请求失败: {}", last_error)
+        };
+        Ok(build_json_error(StatusCode::BAD_GATEWAY, "upstream_error", &msg).into_response())
+    }
 }
 
 pub async fn handle_fallback(
