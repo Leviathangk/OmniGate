@@ -1491,7 +1491,9 @@ function App() {
          ============================================================================ */}
       <aside className="sidebar">
         <div className="logo-section">
-          <div className="logo-icon">Ω</div>
+          <div className="logo-icon" style={{ background: "transparent", boxShadow: "none" }}>
+            <img src="/logo.png" alt="OmniGate Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+          </div>
           <div className="logo-info">
             <h1>OmniGate</h1>
             <span>AI账号轮换管理器 v0.1.0</span>

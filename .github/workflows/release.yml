@@ -1,0 +1,59 @@
+name: "Release & Package Application"
+
+on:
+  push:
+    tags:
+      - 'v*' # 当推送版本标签（例如 v0.1.0）时自动触发构建
+  workflow_dispatch: # 允许在 GitHub Action 页面手动一键触发构建
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest' # 用于编译 MacOS 安装包 (.dmg & .app)
+            args: '--target universal-apple-darwin' # 编译支持 Intel + Apple Silicon (M1/M2/M3) 的通用架构安装包
+          - platform: 'windows-latest' # 用于编译 Windows 安装包 (.msi & .exe)
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # MacOS 需要同时添加 x86_64 和 AArch64 构建目标以生成 Universal 二进制包
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache Cargo Dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Build and Publish Release
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__ # 自动提取 tauri.conf.json 中的 version 字段作为 Tag 名
+          releaseName: 'OmniGate v__VERSION__'
+          releaseDraft: true # 生成草稿发布版本，供您手动检查后点击发布
+          prerelease: false
+          args: ${{ matrix.args }}
