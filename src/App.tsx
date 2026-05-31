@@ -127,15 +127,6 @@ interface ClientConfig {
   providers: Provider[];
 }
 
-interface GlobalSettings {
-  default_client: string;
-  default_strategy: string;
-  auto_failover: boolean;
-  global_timeout: number;
-  global_retry: number;
-  global_concurrency: number;
-  request_logging: boolean;
-}
 
 const getUrlPreview = (url: string, protocol: string) => {
   if (!url.trim()) return { discover: "-", forward: "-" };
@@ -844,23 +835,6 @@ function App() {
     localStorage.setItem("hijackApiKey", result);
   };
 
-  const handleHijackCodex = () => {
-    if (!hijackApiKey) {
-      alert("请先生成或输入接管凭证 (Proxy API Key)");
-      return;
-    }
-    invoke("hijack_codex_config", {
-      providerName: hijackProviderName,
-      baseUrl: hijackBaseUrl,
-      proxyApiKey: hijackApiKey
-    }).then(() => {
-      alert("Codex 配置文件修改成功，已接管！");
-    }).catch(e => {
-      alert(`接管失败: ${e}`);
-    });
-  };
-
-  const [isClientConfigsLoaded, setIsClientConfigsLoaded] = useState(false);
   // 用 ref 记录是否已完成「首次从 DB 加载并设置状态」这两步，
   // 避免 useEffect auto-save 在数据落定之前就用旧的初始值覆写 DB。
   const clientConfigsReadyRef = useRef(false);
@@ -974,13 +948,10 @@ function App() {
           invoke("restore_opencode_config").catch(console.error);
         }
       }
-      
-      setIsClientConfigsLoaded(true);
     } catch (err) {
       console.error("加载数据失败:", err);
       // 即使加载失败，也要开放 auto-save 阈值，否则用户操作永远不会被保存
       clientConfigsReadyRef.current = true;
-      setIsClientConfigsLoaded(true);
     }
   };
 
@@ -1528,12 +1499,18 @@ function App() {
         </div>
 
         <div className="menu-section">
-          <div className="menu-title">控制台</div>
+          <div className="menu-title">监控</div>
           <ul className="menu-list">
             <li className={`menu-item ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
               <div className="menu-icon"><LayoutDashboard size={17} /></div>
               <span>核心概览</span>
             </li>
+          </ul>
+        </div>
+
+        <div className="menu-section">
+          <div className="menu-title">代理管理</div>
+          <ul className="menu-list">
             <li className={`menu-item ${activeTab === "providers" ? "active" : ""}`} onClick={() => setActiveTab("providers")}>
               <div className="menu-icon"><Server size={17} /></div>
               <span>供应商管理</span>
@@ -1542,6 +1519,12 @@ function App() {
               <div className="menu-icon"><Sliders size={17} /></div>
               <span>客户端配置</span>
             </li>
+          </ul>
+        </div>
+
+        <div className="menu-section">
+          <div className="menu-title">功能管理</div>
+          <ul className="menu-list">
             <li className={`menu-item ${activeTab === "global_prompts" ? "active" : ""}`} onClick={() => setActiveTab("global_prompts")}>
               <div className="menu-icon"><FileText size={17} /></div>
               <span>全局提示词</span>
