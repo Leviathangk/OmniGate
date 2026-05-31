@@ -625,7 +625,7 @@ function App() {
   // ============================================================================
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [darkMode, setDarkMode] = useState<boolean>(true);
-  const [statsPeriod, setStatsPeriod] = useState<string>("7");
+  const [statsPeriod, setStatsPeriod] = useState<number>(7);
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
   
   // 核心数据状态
@@ -1749,28 +1749,60 @@ function App() {
                   
                   
                   <div className="panel-card">
-                    <div className="card-header-row">
-                      <h3>活跃度热力图 (近半年)</h3>
+                    <div className="card-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h3>请求趋势</h3>
+                      <div style={{ display: 'flex', background: 'hsl(var(--border-card))', padding: '3px', borderRadius: '8px', border: '1px solid hsl(var(--border-color))' }}>
+                        {[7, 15, 30].map(days => (
+                          <button
+                            key={days}
+                            onClick={() => setStatsPeriod(days)}
+                            style={{
+                              background: statsPeriod === days ? 'hsl(var(--bg-card))' : 'transparent',
+                              color: statsPeriod === days ? 'hsl(var(--text-primary))' : 'hsl(var(--text-muted))',
+                              border: 'none',
+                              padding: '4px 12px',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              cursor: 'pointer',
+                              fontWeight: statsPeriod === days ? '600' : 'normal',
+                              transition: 'all 0.2s ease',
+                              boxShadow: statsPeriod === days ? 'var(--card-shadow)' : 'none'
+                            }}
+                          >
+                            近 {days} 天
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {heatmapData.length === 0 ? (
-                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.8rem", height: "100px" }}>
-                            <span>暂无请求记录</span>
-                         </div>
-                      ) : (
-                        <div className="heatmap-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(12px, 1fr))', gap: '4px', overflowX: 'auto' }}>
-                          {heatmapData.map((d, i) => {
-                            let opacity = 0.2;
-                            if (d.count > 0) opacity = 0.4;
-                            if (d.count > 50) opacity = 0.6;
-                            if (d.count > 200) opacity = 0.8;
-                            if (d.count > 500) opacity = 1.0;
-                            return (
-                              <div key={i} title={`${d.date}: ${d.count} 次请求`} style={{ width: '12px', height: '12px', borderRadius: '2px', backgroundColor: `rgba(16, 185, 129, ${opacity})`, cursor: 'pointer' }} />
-                            );
+                    <div style={{ marginTop: '20px', height: '220px', width: '100%' }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart
+                          data={Array.from({ length: statsPeriod }).map((_, i) => {
+                            const d = new Date();
+                            d.setDate(d.getDate() - (statsPeriod - 1) + i);
+                            const dateStr = d.toISOString().split('T')[0];
+                            const found = heatmapData.find(item => item.date === dateStr);
+                            return { date: dateStr.slice(5), count: found ? found.count : 0 };
                           })}
-                        </div>
-                      )}
+                          margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                        >
+                          <defs>
+                            <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
+                              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.0}/>
+                            </linearGradient>
+                          </defs>
+                          <XAxis dataKey="date" stroke="hsl(var(--text-muted))" fontSize={12} tickLine={false} axisLine={false} />
+                          <YAxis stroke="hsl(var(--text-muted))" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                          <RechartsTooltip 
+                            contentStyle={{ backgroundColor: 'hsl(var(--bg-card))', border: '1px solid hsl(var(--border-color))', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
+                            itemStyle={{ color: 'hsl(var(--text-primary))' }}
+                            labelStyle={{ color: 'hsl(var(--text-secondary))', marginBottom: '4px' }}
+                            cursor={{ stroke: 'hsl(var(--border-color))', strokeWidth: 1, strokeDasharray: '4 4' }}
+                          />
+                          <Area type="monotone" dataKey="count" name="请求次数" stroke="hsl(var(--primary))" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" activeDot={{ r: 6, fill: 'hsl(var(--primary))', stroke: '#fff', strokeWidth: 2 }} />
+                        </AreaChart>
+                      </ResponsiveContainer>
                     </div>
                   </div>
                 </div>

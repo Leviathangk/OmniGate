@@ -162,13 +162,28 @@ impl DbManager {
             })
         }).map_err(|e| e.to_string())?;
 
-        let mut res = Vec::new();
+        let mut full_res = Vec::with_capacity(24);
+        for i in 0..24 {
+            full_res.push(TrafficPoint {
+                time: format!("{:02}:00", i),
+                count: 0,
+                avg_latency: 0.0,
+                error_count: 0,
+            });
+        }
+
         for r in rows {
             if let Ok(stat) = r {
-                res.push(stat);
+                if let Some(hr_str) = stat.time.split(':').next() {
+                    if let Ok(hr) = hr_str.parse::<usize>() {
+                        if hr < 24 {
+                            full_res[hr] = stat;
+                        }
+                    }
+                }
             }
         }
-        Ok(res)
+        Ok(full_res)
     }
 
     pub fn get_recent_activities(&self, limit: u32) -> Result<Vec<RecentActivity>, String> {
