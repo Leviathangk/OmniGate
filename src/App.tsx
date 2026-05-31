@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { McpDisplay } from "./components/mcp";
 
 // ============================================================================
 // TypeScript 接口定义
@@ -2767,6 +2768,10 @@ function App() {
               TAB: MCP (MCP 服务管理)
              ============================================================================ */}
           {activeTab === "mcp" && (
+            <McpDisplay />
+          )}
+
+          {activeTab === "mcp_legacy" && (
             <div>
               <div className="dashboard-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
                 <div className="panel-card">

@@ -124,7 +124,8 @@ pub fn run() {
             commands::get_heatmap_data,
             commands::check_cli_installed,
             commands::read_external_prompt,
-            commands::write_external_prompt
+            commands::write_external_prompt,
+            commands::get_external_mcp_servers
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
