@@ -1338,3 +1338,65 @@ body {
   flex-grow: 1;
   margin-bottom: 0;
 }
+
+/* ============================================================================
+   Import Preview Modal
+   ============================================================================ */
+.import-preview-modal {
+  width: 860px;
+  max-width: 96vw;
+  max-height: 86vh;
+}
+
+.import-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.import-preview-table thead th {
+  position: sticky;
+  top: 0;
+  background-color: hsl(var(--bg-sidebar));
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--text-muted));
+  padding: 10px 16px;
+  border-bottom: 1px solid hsl(var(--border-color));
+  z-index: 2;
+}
+
+.import-preview-table tbody tr {
+  border-bottom: 1px solid hsl(var(--border-color) / 0.5);
+  transition: background-color 0.15s ease;
+}
+
+.import-preview-table tbody td {
+  padding: 11px 16px;
+  vertical-align: middle;
+}
+
+/* Row state: new (importable) */
+.import-row-new {
+  background-color: hsl(var(--bg-card));
+}
+
+.import-row-new:hover {
+  background-color: hsl(var(--primary) / 0.04);
+}
+
+/* Row state: already exists */
+.import-row-exists {
+  background-color: hsl(var(--bg-sidebar) / 0.5);
+  opacity: 0.72;
+}
+
+/* Row state: just imported successfully */
+.import-row-done {
+  background-color: hsl(142 60% 45% / 0.06);
+}
+
+.import-row-done:hover {
+  background-color: hsl(142 60% 45% / 0.1);
+}

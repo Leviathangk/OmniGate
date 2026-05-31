@@ -34,7 +34,11 @@ import {
   ListPlus,
   RotateCw,
   AlertTriangle,
-  FileText
+  FileText,
+  Upload,
+  Download,
+  PackagePlus,
+  PackageCheck
 } from "lucide-react";
 import "./App.css";
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
@@ -75,6 +79,32 @@ interface Model {
   cap_long_context?: boolean;
   mapping?: string;
   is_mapped_default?: boolean;
+}
+
+// 导入预览条目（包含「是否已存在」状态）
+interface ImportPreviewItem {
+  name: string;
+  api_url: string;
+  api_key: string;
+  protocol: string;
+  is_active: boolean;
+  models: Array<{
+    name: string;
+    display_name: string;
+    is_active: boolean;
+    cap_reasoning: boolean;
+    cap_vision: boolean;
+    cap_tools: boolean;
+    cap_embedding: boolean;
+    cap_reranking: boolean;
+    cap_long_context: boolean;
+    mapping?: string;
+    is_mapped_default?: boolean;
+  }>;
+  // 运行时判断字段
+  alreadyExists: boolean;
+  isImporting: boolean;
+  isImported: boolean;
 }
 
 interface McpServer {
@@ -799,6 +829,13 @@ function App() {
   const [wizardSearchQuery, setWizardSearchQuery] = useState<string>("");
   const [wizardFeatureTab, setWizardFeatureTab] = useState<string>("all");
 
+  // ---- 导入/导出 状态 ----
+  const [showImportModal, setShowImportModal] = useState<boolean>(false);
+  const [importPreviewList, setImportPreviewList] = useState<ImportPreviewItem[]>([]);
+  const [importFileName, setImportFileName] = useState<string>("");
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
+
   // ============================================================================
   // 数据获取与同步
   // ============================================================================
@@ -1138,8 +1175,165 @@ function App() {
     }
   };
 
+  // ============================================================================
+  // 供应商导出
+  // ============================================================================
+  const handleExportProviders = async () => {
+    if (providers.length === 0) { showToast("暂无供应商可导出", "warning"); return; }
+    setIsExporting(true);
+    try {
+      // 逐一拉取每个供应商下的模型数据
+      const exportData = await Promise.all(
+        providers.map(async (p) => {
+          const providerModels = await invoke<Model[]>("get_models", { providerId: p.id });
+          return {
+            name: p.name,
+            api_url: p.api_url,
+            api_key: p.api_key,
+            protocol: p.protocol,
+            is_active: p.is_active,
+            models: providerModels.map(m => ({
+              name: m.name,
+              display_name: m.display_name,
+              is_active: m.is_active,
+              cap_reasoning: m.cap_reasoning ?? false,
+              cap_vision: m.cap_vision ?? false,
+              cap_tools: m.cap_tools ?? false,
+              cap_embedding: m.cap_embedding ?? false,
+              cap_reranking: m.cap_reranking ?? false,
+              cap_long_context: m.cap_long_context ?? false,
+              ...(m.mapping ? { mapping: m.mapping } : {}),
+              ...(m.is_mapped_default ? { is_mapped_default: m.is_mapped_default } : {}),
+            })),
+          };
+        })
+      );
 
+      const payload = {
+        version: "1.0",
+        exported_at: new Date().toISOString(),
+        providers: exportData,
+      };
 
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const dateStr = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `omnigate-providers-${dateStr}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`成功导出 ${providers.length} 个供应商配置`, "success");
+    } catch (err) {
+      showToast("导出失败：" + err, "error");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // ============================================================================
+  // 供应商导入 — 文件解析
+  // ============================================================================
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = JSON.parse(ev.target?.result as string);
+        if (!json.providers || !Array.isArray(json.providers)) {
+          showToast("文件格式不正确，缺少 providers 字段", "error");
+          return;
+        }
+        // 与本地已有供应商对比（api_url + api_key 双字段匹配）
+        const preview: ImportPreviewItem[] = json.providers.map((p: any) => {
+          const alreadyExists = providers.some(
+            (local) => local.api_url === p.api_url && local.api_key === p.api_key
+          );
+          return {
+            name: p.name ?? "未命名",
+            api_url: p.api_url ?? "",
+            api_key: p.api_key ?? "",
+            protocol: p.protocol ?? "codex_chat",
+            is_active: p.is_active ?? true,
+            models: Array.isArray(p.models) ? p.models : [],
+            alreadyExists,
+            isImporting: false,
+            isImported: false,
+          };
+        });
+        // 排序：可添加的排前面，已存在的排后面
+        preview.sort((a, b) => Number(a.alreadyExists) - Number(b.alreadyExists));
+        setImportPreviewList(preview);
+        setShowImportModal(true);
+      } catch {
+        showToast("JSON 解析失败，请检查文件格式", "error");
+      }
+    };
+    reader.readAsText(file);
+    // 重置 input，确保同名文件可以再次选择
+    e.target.value = "";
+  };
+
+  // 导入单个供应商
+  const handleImportSingleProvider = async (index: number) => {
+    const item = importPreviewList[index];
+    if (!item || item.alreadyExists || item.isImporting || item.isImported) return;
+
+    setImportPreviewList(prev => prev.map((x, i) => i === index ? { ...x, isImporting: true } : x));
+    try {
+      // 1. 创建供应商
+      const newId = await invoke<string>("add_provider", {
+        name: item.name,
+        apiUrl: item.api_url,
+        apiKey: item.api_key,
+        protocol: item.protocol,
+      });
+
+      // 2. 批量写入所有模型（后端用 add_models_to_provider 接收 model_names 列表）
+      if (item.models.length > 0) {
+        await invoke<number>("add_models_to_provider", {
+          providerId: newId,
+          modelNames: item.models.map(m => m.name),
+        });
+
+        // 3. 对 Claude 协议的模型写入映射信息
+        if (item.protocol === "claude") {
+          // 重新拉取刚写入的模型以获得它们的 id
+          const savedModels = await invoke<Model[]>("get_models", { providerId: newId });
+          for (const savedModel of savedModels) {
+            const srcModel = item.models.find(m => m.name === savedModel.name);
+            if (!srcModel) continue;
+            if (srcModel.mapping) {
+              await invoke("update_model_mapping", { id: savedModel.id, mapping: srcModel.mapping }).catch(console.error);
+            }
+            if (srcModel.is_mapped_default) {
+              await invoke("update_model_mapped_default", { providerId: newId, modelId: savedModel.id, isDefault: true }).catch(console.error);
+            }
+          }
+        }
+      }
+
+      setImportPreviewList(prev => prev.map((x, i) => i === index ? { ...x, isImporting: false, isImported: true } : x));
+      await loadData();
+      showToast(`供应商「${item.name}」导入成功`, "success");
+    } catch (err) {
+      setImportPreviewList(prev => prev.map((x, i) => i === index ? { ...x, isImporting: false } : x));
+      showToast(`导入「${item.name}」失败：${err}`, "error");
+    }
+  };
+
+  // 一键导入所有可添加的供应商
+  const handleImportAllNew = async () => {
+    const newItems = importPreviewList
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => !item.alreadyExists && !item.isImported);
+    if (newItems.length === 0) return;
+    for (const { index } of newItems) {
+      await handleImportSingleProvider(index);
+    }
+  };
 
 
   const handleToggleClient = async (clientId: string) => {
@@ -1865,7 +2059,18 @@ function App() {
             <div className="panel-card">
               <div className="card-header-row">
                 <h3>已接管的 AI 供应商列表</h3>
-                <button className="btn-primary" onClick={() => { setShowAddProviderModal(true); setWizardStep(1); }}><Plus size={16} /> 添加新供应商</button>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <button className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem" }}
+                    onClick={() => importFileInputRef.current?.click()}>
+                    <Upload size={14} /> 导入
+                  </button>
+                  <input ref={importFileInputRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleImportFileChange} />
+                  <button className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem" }}
+                    onClick={handleExportProviders} disabled={isExporting}>
+                    <Download size={14} /> {isExporting ? "导出中..." : "导出"}
+                  </button>
+                  <button className="btn-primary" onClick={() => { setShowAddProviderModal(true); setWizardStep(1); }}><Plus size={16} /> 添加新供应商</button>
+                </div>
               </div>
 
               <div className="responsive-table-container">
@@ -2702,6 +2907,156 @@ function App() {
           )}
         </section>
       </main>
+
+
+      {/* ============================================================================
+          MODAL: 供应商导入预览
+         ============================================================================ */}
+      {showImportModal && (
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowImportModal(false); } }}>
+          <div className="modal-content-window import-preview-modal">
+            {/* Header */}
+            <header className="modal-header-section">
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)))", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Upload size={18} style={{ color: "#fff" }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: "1.05rem", fontWeight: 700, marginBottom: "2px" }}>导入供应商预览</h3>
+                  <p style={{ fontSize: "0.76rem", color: "hsl(var(--text-secondary))", margin: 0 }}>
+                    {importFileName} &nbsp;·&nbsp;
+                    共 <strong>{importPreviewList.length}</strong> 个供应商，
+                    <strong style={{ color: "hsl(var(--primary))" }}>{importPreviewList.filter(x => !x.alreadyExists && !x.isImported).length}</strong> 个可导入，
+                    <strong style={{ color: "hsl(var(--text-muted))" }}>{importPreviewList.filter(x => x.alreadyExists).length}</strong> 个已存在，
+                    <strong style={{ color: "hsl(120,60%,50%)" }}>{importPreviewList.filter(x => x.isImported).length}</strong> 个已完成
+                  </p>
+                </div>
+              </div>
+              <button className="modal-close-btn" onClick={() => setShowImportModal(false)}><X size={20} /></button>
+            </header>
+
+            {/* Bulk action bar */}
+            <div style={{ padding: "14px 24px", borderBottom: "1px solid hsl(var(--border-color))", display: "flex", alignItems: "center", justifyContent: "space-between", backgroundColor: "hsl(var(--bg-sidebar) / 0.4)" }}>
+              <span style={{ fontSize: "0.8rem", color: "hsl(var(--text-secondary))" }}>
+                可添加的排在前面，已存在的排在后面（基于 API URL + API Key 双重匹配）
+              </span>
+              {(() => {
+                const importableCount = importPreviewList.filter(x => !x.alreadyExists && !x.isImported && !x.isImporting).length;
+                return (
+                  <button
+                    className="btn-primary"
+                    style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "7px 14px", opacity: importableCount === 0 ? 0.4 : 1 }}
+                    disabled={importableCount === 0}
+                    onClick={handleImportAllNew}
+                  >
+                    <PackagePlus size={15} />
+                    一键导入所有可添加的 ({importableCount})
+                  </button>
+                );
+              })()}
+            </div>
+
+            {/* Provider list */}
+            <div className="modal-body-section" style={{ padding: "0" }}>
+              <table className="data-table import-preview-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "32px" }}></th>
+                    <th>供应商名称</th>
+                    <th>API URL</th>
+                    <th>协议</th>
+                    <th style={{ textAlign: "center" }}>模型数</th>
+                    <th style={{ textAlign: "right" }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importPreviewList.map((item, idx) => {
+                    const done = item.isImported;
+                    const loading = item.isImporting;
+                    return (
+                      <tr key={idx} className={item.alreadyExists ? "import-row-exists" : done ? "import-row-done" : "import-row-new"}>
+                        {/* Status icon */}
+                        <td style={{ textAlign: "center", paddingRight: "4px" }}>
+                          {done ? (
+                            <div style={{ width: 22, height: 22, borderRadius: "50%", background: "hsl(142 60% 45%)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                              <Check size={13} style={{ color: "#fff" }} />
+                            </div>
+                          ) : item.alreadyExists ? (
+                            <div style={{ width: 22, height: 22, borderRadius: "50%", background: "hsl(var(--border-color))", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                              <PackageCheck size={13} style={{ color: "hsl(var(--text-muted))" }} />
+                            </div>
+                          ) : (
+                            <div style={{ width: 22, height: 22, borderRadius: "50%", background: "hsl(var(--primary) / 0.18)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                              <PackagePlus size={13} style={{ color: "hsl(var(--primary))" }} />
+                            </div>
+                          )}
+                        </td>
+                        {/* Name */}
+                        <td style={{ fontWeight: 600, fontSize: "0.86rem", color: item.alreadyExists ? "hsl(var(--text-muted))" : "hsl(var(--text-primary))" }}>
+                          {item.name}
+                        </td>
+                        {/* API URL */}
+                        <td>
+                          <code style={{ fontSize: "0.73rem", color: item.alreadyExists ? "hsl(var(--text-muted))" : "hsl(var(--text-secondary))", wordBreak: "break-all" }}>
+                            {item.api_url}
+                          </code>
+                        </td>
+                        {/* Protocol badge */}
+                        <td>
+                          <span className={`status-badge ${item.alreadyExists ? "" : "secondary"}`} style={{ opacity: item.alreadyExists ? 0.5 : 1 }}>
+                            {item.protocol === "claude" && "Claude"}
+                            {item.protocol === "codex_responses" && "Codex /resp"}
+                            {item.protocol === "codex_chat" && "Codex /chat"}
+                          </span>
+                        </td>
+                        {/* Model count */}
+                        <td style={{ textAlign: "center" }}>
+                          <span style={{ fontSize: "0.82rem", fontWeight: 600, color: item.alreadyExists ? "hsl(var(--text-muted))" : "hsl(var(--text-secondary))" }}>
+                            {item.models.length}
+                            {item.protocol === "claude" && item.models.some(m => m.mapping) && (
+                              <span style={{ marginLeft: "4px", fontSize: "0.68rem", color: "hsl(var(--primary))", fontWeight: 400 }}>+映射</span>
+                            )}
+                          </span>
+                        </td>
+                        {/* Action */}
+                        <td style={{ textAlign: "right" }}>
+                          {done ? (
+                            <span style={{ fontSize: "0.78rem", color: "hsl(142 60% 45%)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                              <Check size={13} /> 已导入
+                            </span>
+                          ) : item.alreadyExists ? (
+                            <button disabled style={{ padding: "4px 12px", fontSize: "0.76rem", borderRadius: "6px", border: "1px solid hsl(var(--border-color))", background: "transparent", color: "hsl(var(--text-muted))", cursor: "not-allowed" }}>
+                              已存在
+                            </button>
+                          ) : (
+                            <button
+                              className="btn-primary"
+                              style={{ padding: "4px 12px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: "5px", opacity: loading ? 0.6 : 1 }}
+                              disabled={loading}
+                              onClick={() => handleImportSingleProvider(idx)}
+                            >
+                              {loading ? (
+                                <><RotateCw size={12} className="anim-spin" /> 导入中...</>
+                              ) : (
+                                <><Plus size={12} /> 添加</>
+                              )}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: "14px 24px", borderTop: "1px solid hsl(var(--border-color))", display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn-secondary" style={{ fontSize: "0.84rem" }} onClick={() => setShowImportModal(false)}>关闭</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ============================================================================
           MODAL: 模型映射 Modal
