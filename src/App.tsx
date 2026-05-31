@@ -75,6 +75,8 @@ interface Model {
   cap_embedding?: boolean;
   cap_reranking?: boolean;
   cap_long_context?: boolean;
+  mapping?: string;
+  is_mapped_default?: boolean;
 }
 
 interface McpServer {
@@ -746,6 +748,9 @@ function App() {
   const [showProviderConnectionModal, setShowProviderConnectionModal] = useState<boolean>(false);
   const [editConnectionData, setEditConnectionData] = useState<Provider | null>(null);
   const [showConnectionApiKey, setShowConnectionApiKey] = useState<boolean>(false);
+  const [showMappingModal, setShowMappingModal] = useState(false);
+  const [mappingProvider, setMappingProvider] = useState<Provider | null>(null);
+  const [mappingModels, setMappingModels] = useState<Model[]>([]);
   const [isSyncingModels, setIsSyncingModels] = useState<boolean>(false);
   const [modelsSearchQuery, setModelsSearchQuery] = useState<string>("");
   const [manualModelName, setManualModelName] = useState<string>("");
@@ -983,6 +988,44 @@ function App() {
     }
   };
 
+  const handleOpenModelMapping = async (provider: Provider) => {
+    setMappingProvider(provider);
+    setShowMappingModal(true);
+    try {
+      const modList = await invoke<Model[]>("get_models", { providerId: provider.id });
+      // 只保留已启用的模型进行映射
+      setMappingModels(modList.filter(m => m.is_active));
+    } catch (err) {
+      console.error("加载映射模型失败:", err);
+    }
+  };
+
+  const handleMappingChange = (modelId: string, value: string) => {
+    setMappingModels(prev => prev.map(m => m.id === modelId ? { ...m, mapping: value } : m));
+  };
+
+  const handleMappingBlur = async (modelId: string, mapping: string) => {
+    try {
+      await invoke("update_model_mapping", { id: modelId, mapping });
+    } catch (e) {
+      alert("保存映射失败: " + e);
+    }
+  };
+
+  const handleDefaultChange = async (modelId: string, isDefault: boolean) => {
+    if (!mappingProvider) return;
+    try {
+      await invoke("update_model_mapped_default", { providerId: mappingProvider.id, modelId, isDefault });
+      setMappingModels(prev => prev.map(m => {
+        if (m.id === modelId) return { ...m, is_mapped_default: isDefault };
+        if (isDefault) return { ...m, is_mapped_default: false };
+        return m;
+      }));
+    } catch (err: any) {
+      alert("设置默认失败：" + err);
+    }
+  };
+
   const handleOpenProviderConnection = (provider: Provider) => {
     setEditConnectionData({ ...provider });
     setShowConnectionApiKey(false); // 重置眼睛开关状态
@@ -1152,6 +1195,31 @@ function App() {
           console.log("已接管 OpenCode 配置文件");
         } catch (e) {
           console.error("接管 OpenCode 配置失败", e);
+          alert(String(e));
+          setClientConfigs(prev => prev.map(c => c.client_id === clientId ? { ...c, is_enabled: false } : c));
+        }
+      }
+    }
+
+    if (clientId === "claude") {
+      if (!newEnabledState) {
+        try {
+          await invoke("restore_claude_config");
+          console.log("已还原 Claude 配置文件");
+        } catch (e) {
+          console.error("还原 Claude 配置失败", e);
+        }
+      } else {
+        try {
+          if (!hijackApiKey) {
+            await new Promise(r => setTimeout(r, 100));
+          }
+          await invoke("hijack_claude_config", {
+            proxyApiKey: hijackApiKey || "sk-omnigate-fallback"
+          });
+          console.log("已接管 Claude 配置文件");
+        } catch (e) {
+          console.error("接管 Claude 配置失败", e);
           alert(String(e));
           setClientConfigs(prev => prev.map(c => c.client_id === clientId ? { ...c, is_enabled: false } : c));
         }
@@ -1756,6 +1824,9 @@ function App() {
                         <td>
                           <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", marginRight: "8px" }} onClick={() => handleOpenProviderConnection(p)}>连接配置</button>
                           <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", marginRight: "8px" }} onClick={() => handleOpenProviderDetails(p)}>模型信息</button>
+                          {p.protocol === "claude" && (
+                            <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", marginRight: "8px" }} onClick={() => handleOpenModelMapping(p)}>模型映射</button>
+                          )}
                           <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", color: "hsl(var(--danger))", borderColor: "hsl(var(--danger) / 0.2)" }} onClick={() => handleDeleteProvider(p.id)}><Trash2 size={12} /></button>
                         </td>
                       </tr>
@@ -2505,6 +2576,81 @@ function App() {
           )}
         </section>
       </main>
+
+      {/* ============================================================================
+          MODAL: 模型映射 Modal
+         ============================================================================ */}
+      {showMappingModal && mappingProvider && (
+        <div className="modal-overlay">
+          <div className="modal-content-window" style={{ maxWidth: "600px", width: "90%" }}>
+            <header className="modal-header-section" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)))", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Server size={16} style={{ color: "#fff" }} />
+                </div>
+                <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1rem", margin: 0 }}>模型映射 <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "normal" }}>(仅限 Claude 转发使用)</span></h3>
+              </div>
+              <button
+                style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}
+                onClick={() => setShowMappingModal(false)}
+              >
+                <X size={15} />
+              </button>
+            </header>
+
+            <div className="modal-body-section" style={{ padding: "20px", maxHeight: "60vh", overflowY: "auto" }}>
+              <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "16px", lineHeight: "1.5" }}>
+                💡 仅在 <strong>Claude 客户端转发</strong> 时生效。<br/>
+                当客户端请求的模型等于映射别名时，将自动替换为左侧的实际模型。多个别名请用英文逗号 <code style={{ fontSize: "0.75rem", backgroundColor: "hsl(var(--bg-app))", padding: "2px 4px", borderRadius: "4px"}}>,</code> 分隔。<br/>
+                如果您勾选了<strong>「设为默认」</strong>，则无论客户端请求什么模型，都将被强制无条件路由至该默认模型（此时映射配置将失效并被禁用）。
+              </p>
+              
+              {mappingModels.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "20px", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                  该供应商尚未启用任何模型，请先在“模型信息”中选择并启用模型。
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {mappingModels.map(m => (
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                      <div style={{ flex: 1, fontSize: "0.85rem", fontWeight: "600", color: "var(--text-primary)" }}>
+                        {m.name}
+                      </div>
+                      <div className="form-group" style={{ flex: 2, marginBottom: 0 }}>
+                        <input
+                          type="text"
+                          style={{ padding: "8px 12px", fontSize: "0.8rem", opacity: m.is_mapped_default ? 0.5 : 1 }}
+                          placeholder="例如: claude-opus-4-6"
+                          value={m.mapping || ""}
+                          onChange={(e) => handleMappingChange(m.id, e.target.value)}
+                          onBlur={(e) => handleMappingBlur(m.id, e.target.value)}
+                          disabled={m.is_mapped_default}
+                        />
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: "80px", justifyContent: "flex-end" }}>
+                        <input 
+                          type="checkbox" 
+                          id={`default-${m.id}`}
+                          checked={m.is_mapped_default || false}
+                          onChange={(e) => handleDefaultChange(m.id, e.target.checked)}
+                          style={{ cursor: "pointer", accentColor: "hsl(var(--primary))" }}
+                        />
+                        <label htmlFor={`default-${m.id}`} style={{ fontSize: "0.8rem", color: "var(--text-secondary)", cursor: "pointer", margin: 0, fontWeight: "normal" }}>设为默认</label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
+                <button className="btn-primary" style={{ padding: "8px 24px", fontSize: "0.85rem" }} onClick={() => setShowMappingModal(false)}>
+                  完成配置
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ============================================================================
           MODAL: 供应商连接配置

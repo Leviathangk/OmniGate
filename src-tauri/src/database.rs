@@ -68,6 +68,8 @@ pub struct ModelRow {
     pub cap_reranking: bool,
     pub cap_long_context: bool,
     pub is_active: bool,
+    pub mapping: Option<String>,
+    pub is_mapped_default: bool,
 }
 
 pub struct McpRow {
@@ -321,6 +323,7 @@ impl DbManager {
                 cap_long_context INTEGER DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
                 created_at INTEGER NOT NULL,
+                is_mapped_default INTEGER DEFAULT 0,
                 FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
             );",
             [],
@@ -398,7 +401,13 @@ impl DbManager {
         ).map_err(|e| e.to_string())?;
 
         // 尝试添加 sort_order 字段（如果已存在会忽略错误）
-        let _ = conn.execute("ALTER TABLE client_config_providers ADD COLUMN sort_order INTEGER DEFAULT 0;", []);
+        let _ = conn.execute("ALTER TABLE client_config_providers ADD COLUMN sort_order INTEGER DEFAULT 0", []);
+        
+        // 尝试添加 mapping 字段（用于模型映射）
+        let _ = conn.execute("ALTER TABLE models ADD COLUMN mapping TEXT", []);
+        
+        // 尝试添加 is_mapped_default 字段
+        let _ = conn.execute("ALTER TABLE models ADD COLUMN is_mapped_default INTEGER DEFAULT 0", []);
 
         Ok(())
     }
@@ -492,8 +501,8 @@ impl DbManager {
             "INSERT OR IGNORE INTO models
              (id, provider_id, name, display_name,
               cap_reasoning, cap_vision, cap_tools, cap_embedding, cap_reranking, cap_long_context,
-              is_active, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12);",
+              is_active, created_at, mapping, is_mapped_default)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14);",
             rusqlite::params![
                 row.id,
                 row.provider_id,
@@ -507,6 +516,8 @@ impl DbManager {
                 row.cap_long_context as i64,
                 row.is_active as i64,
                 now,
+                row.mapping,
+                row.is_mapped_default as i64,
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
@@ -517,7 +528,7 @@ impl DbManager {
         let mut stmt = conn.prepare(
             "SELECT id, provider_id, name, display_name,
                     cap_reasoning, cap_vision, cap_tools, cap_embedding, cap_reranking, cap_long_context,
-                    is_active
+                    is_active, mapping, is_mapped_default
              FROM models WHERE provider_id = ?1 ORDER BY created_at ASC;"
         ).map_err(|e| e.to_string())?;
 
@@ -534,6 +545,8 @@ impl DbManager {
                 cap_reranking: row.get::<_, i64>(8)? != 0,
                 cap_long_context: row.get::<_, i64>(9)? != 0,
                 is_active: row.get::<_, i64>(10)? != 0,
+                mapping: row.get(11)?,
+                is_mapped_default: row.get::<_, i64>(12).unwrap_or(0) != 0,
             })
         }).map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
@@ -546,6 +559,37 @@ impl DbManager {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM models WHERE id = ?1;", rusqlite::params![id])
             .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn update_model_mapping(&self, id: &str, mapping: Option<String>) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE models SET mapping = ?1 WHERE id = ?2;",
+            rusqlite::params![mapping, id],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn update_model_mapped_default(&self, provider_id: &str, model_id: &str, is_default: bool) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        if is_default {
+            // 先将该 provider 的所有模型取消默认
+            conn.execute(
+                "UPDATE models SET is_mapped_default = 0 WHERE provider_id = ?1;",
+                rusqlite::params![provider_id],
+            ).map_err(|e| e.to_string())?;
+            // 再设置目标模型
+            conn.execute(
+                "UPDATE models SET is_mapped_default = 1 WHERE id = ?1;",
+                rusqlite::params![model_id],
+            ).map_err(|e| e.to_string())?;
+        } else {
+            conn.execute(
+                "UPDATE models SET is_mapped_default = 0 WHERE id = ?1;",
+                rusqlite::params![model_id],
+            ).map_err(|e| e.to_string())?;
+        }
         Ok(())
     }
 

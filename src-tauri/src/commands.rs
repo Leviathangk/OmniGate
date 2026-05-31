@@ -33,6 +33,8 @@ pub struct ModelDto {
     pub cap_embedding: bool,
     pub cap_reranking: bool,
     pub cap_long_context: bool,
+    pub mapping: Option<String>,
+    pub is_mapped_default: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,6 +192,8 @@ pub fn get_models(
         cap_embedding: r.cap_embedding,
         cap_reranking: r.cap_reranking,
         cap_long_context: r.cap_long_context,
+        mapping: r.mapping,
+        is_mapped_default: r.is_mapped_default,
     }).collect();
     Ok(dtos)
 }
@@ -216,6 +220,8 @@ pub fn add_models_to_provider(
             cap_reranking: caps.reranking,
             cap_long_context: caps.long_context,
             is_active: true,
+            mapping: None,
+            is_mapped_default: false,
         };
         state.db.insert_model(&row)?;
         inserted += 1;
@@ -223,6 +229,15 @@ pub fn add_models_to_provider(
     Ok(inserted)
 }
 
+#[tauri::command]
+pub fn update_model_mapped_default(
+    provider_id: String,
+    model_id: String,
+    is_default: bool,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    state.db.update_model_mapped_default(&provider_id, &model_id, is_default)
+}
 #[tauri::command]
 pub fn delete_model(
     id: String,
@@ -240,8 +255,18 @@ pub fn toggle_model(
     state.db.update_model_active(&id, is_active)
 }
 
+#[tauri::command]
+pub fn update_model_mapping(
+    id: String,
+    mapping: Option<String>,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let mapping_cleaned = mapping.and_then(|m| if m.trim().is_empty() { None } else { Some(m.trim().to_string()) });
+    state.db.update_model_mapping(&id, mapping_cleaned)
+}
+
 // ============================================================================
-// MCP & Skills
+// MCP Server & Skills
 // ============================================================================
 
 #[tauri::command]
@@ -351,6 +376,8 @@ pub async fn discover_models(
         cap_embedding: m.capabilities.embedding,
         cap_reranking: m.capabilities.reranking,
         cap_long_context: m.capabilities.long_context,
+        mapping: None,
+        is_mapped_default: false,
     }).collect();
 
     Ok(dtos)
@@ -658,6 +685,86 @@ pub fn restore_opencode_config() -> Result<(), String> {
     Ok(())
 }
 
+
+
+// ============================================================================
+// Claude Configuration Hijack
+// ============================================================================
+
+fn get_claude_config_dir() -> std::path::PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        std::path::PathBuf::from(home).join(".claude")
+    } else {
+        std::path::PathBuf::from(".claude")
+    }
+}
+
+#[tauri::command]
+pub fn hijack_claude_config(
+    proxy_api_key: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    if !state.proxy_running.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("端口 3456 已被占用，网关服务启动失败！请尝试释放该端口（例如旧版的 OmniGate 残留）后重启客户端。".to_string());
+    }
+
+    let claude_dir = get_claude_config_dir();
+    if !claude_dir.exists() {
+        fs::create_dir_all(&claude_dir).map_err(|e| e.to_string())?;
+    }
+
+    let config_path = claude_dir.join("settings.json");
+    let config_bak_path = claude_dir.join("settings.json.bak");
+
+    // 读取或新建 settings.json
+    let mut config: serde_json::Value = if config_path.exists() {
+        if !config_bak_path.exists() {
+            fs::copy(&config_path, &config_bak_path).map_err(|e| e.to_string())?;
+        }
+        let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    if !config.get("env").is_some_and(|v| v.is_object()) {
+        config["env"] = serde_json::json!({});
+    }
+
+    if let Some(env) = config["env"].as_object_mut() {
+        env.insert("ANTHROPIC_BASE_URL".to_string(), serde_json::Value::String("http://127.0.0.1:3456/claude".to_string()));
+        env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), serde_json::Value::String(proxy_api_key));
+    }
+
+    let content = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    fs::write(&config_path, content).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restore_claude_config() -> Result<(), String> {
+    let claude_dir = get_claude_config_dir();
+    let config_path = claude_dir.join("settings.json");
+    let config_bak_path = claude_dir.join("settings.json.bak");
+
+    if config_bak_path.exists() {
+        fs::copy(&config_bak_path, &config_path).map_err(|e| e.to_string())?;
+        fs::remove_file(&config_bak_path).map_err(|e| e.to_string())?;
+    } else if config_path.exists() {
+        let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+        if let Ok(mut config) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(env) = config.get_mut("env").and_then(|v| v.as_object_mut()) {
+                env.remove("ANTHROPIC_BASE_URL");
+                env.remove("ANTHROPIC_AUTH_TOKEN");
+            }
+            let new_content = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+            fs::write(&config_path, new_content).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
+}
 
 
 // ============================================================================

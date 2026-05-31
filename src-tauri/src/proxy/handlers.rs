@@ -53,8 +53,69 @@ pub async fn handle_claude_messages(
     // 修复问题1：每个供应商独立重试 retry_count+1 次，耗尽后再换下一个供应商
     let max_attempts = plan.retry_count as usize + 1;
     let mut last_error = String::new();
+    let mut all_providers_skipped = true;
 
     for provider in plan.providers.iter() {
+        // --- 检查模型是否匹配（原生支持 或 映射支持） ---
+        let mut final_model_name = None;
+        if let Ok(models) = state.db.get_models_by_provider(&provider.id) {
+            if models.is_empty() {
+                // 若该供应商尚未拉取任何模型，默认放行（向下兼容）
+                final_model_name = Some(model_name.clone());
+            } else {
+                for m in &models {
+                    if !m.is_active { continue; }
+                    // 如果该模型被设为全局默认，则无视请求的模型名称，直接全量接管
+                    if m.is_mapped_default {
+                        final_model_name = Some(m.name.clone());
+                        break;
+                    }
+                }
+                
+                // 如果没有全局默认模型，再走名字精确匹配和别名匹配
+                if final_model_name.is_none() {
+                    for m in &models {
+                        if !m.is_active { continue; }
+                        if m.name == model_name {
+                            final_model_name = Some(m.name.clone());
+                            break;
+                        }
+                        if let Some(mapping) = &m.mapping {
+                            if mapping.split(',').map(|s| s.trim()).any(|s| s == model_name) {
+                                final_model_name = Some(m.name.clone());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            final_model_name = Some(model_name.clone());
+        }
+
+        let upstream_model_name = match final_model_name {
+            Some(name) => name,
+            None => {
+                last_error = format!("模型未匹配 (供应商 {} 不支持 {})", provider.name, model_name);
+                continue; // 没匹配上，直接跳过当前供应商，尝试下一个
+            }
+        };
+
+        all_providers_skipped = false;
+
+        // --- 应用模型映射 (如果名称改变，则修改请求体) ---
+        let mut provider_body_bytes = body_bytes.clone();
+        if upstream_model_name != model_name {
+            if let Ok(mut json) = serde_json::from_slice::<serde_json::Value>(&provider_body_bytes) {
+                if let Some(obj) = json.as_object_mut() {
+                    obj.insert("model".to_string(), serde_json::Value::String(upstream_model_name.clone()));
+                    if let Ok(new_bytes) = serde_json::to_vec(&json) {
+                        provider_body_bytes = axum::body::Bytes::from(new_bytes);
+                    }
+                }
+            }
+        }
+
         // --- 构建 URL 和 Headers（每个供应商只做一次）---
         let mut base_url = provider.api_url.trim_end_matches('/').to_string();
         let has_version = {
@@ -95,7 +156,7 @@ pub async fn handle_claude_messages(
         for _attempt in 0..max_attempts {
             let req = state.http_client.post(&upstream_url)
                 .headers(req_headers.clone())
-                .body(body_bytes.clone());
+                .body(provider_body_bytes.clone());
             let start_time = Instant::now();
 
             let res_result = tokio::time::timeout(
@@ -111,7 +172,7 @@ pub async fn handle_claude_messages(
                         let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
                         last_error = format!("HTTP {} - {}", status, body_text);
                         let latency = start_time.elapsed().as_millis() as u32;
-                        let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, Some(&last_error));
+                        let _ = state.db.insert_usage_stat(&provider.id, &upstream_model_name, &req_path, status.as_u16(), latency, Some(&last_error));
                         continue; // 重试同一供应商
                     }
 
@@ -124,7 +185,7 @@ pub async fn handle_claude_messages(
                         }
                     }
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, None);
+                    let _ = state.db.insert_usage_stat(&provider.id, &upstream_model_name, &req_path, status.as_u16(), latency, None);
                     let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     let body = Body::from_stream(stream);
                     return Ok(response_builder.body(body).unwrap());
@@ -132,13 +193,13 @@ pub async fn handle_claude_messages(
                 Ok(Err(e)) => {
                     last_error = format!("Reqwest error: {}", e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 502, latency, Some(&last_error));
+                    let _ = state.db.insert_usage_stat(&provider.id, &upstream_model_name, &req_path, 502, latency, Some(&last_error));
                     continue; // 重试同一供应商
                 }
                 Err(e) => {
                     last_error = format!("Timeout: {}", e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 504, latency, Some(&last_error));
+                    let _ = state.db.insert_usage_stat(&provider.id, &upstream_model_name, &req_path, 504, latency, Some(&last_error));
                     continue; // 重试同一供应商
                 }
             }
@@ -146,12 +207,26 @@ pub async fn handle_claude_messages(
         // 该供应商所有次数耗尽，继续下一个供应商
     }
 
-    let msg = if last_error.is_empty() {
-        "[OmniGate] 所有上游供应商均请求失败。".to_string()
+    let (status_code, error_type, msg) = if all_providers_skipped {
+        (
+            StatusCode::BAD_REQUEST,
+            "invalid_request_error",
+            format!("[OmniGate] 请求被拒绝：您请求的模型 `{}` 未在当前配置的任何供应商中启用，也没有匹配的映射别名。请前往 OmniGate 控制台检查“模型信息”或配置“模型映射”。", model_name)
+        )
+    } else if last_error.is_empty() {
+        (
+            StatusCode::BAD_GATEWAY,
+            "upstream_error",
+            "[OmniGate] 所有上游供应商均请求失败。".to_string()
+        )
     } else {
-        format!("[OmniGate] 上游请求失败: {}", last_error)
+        (
+            StatusCode::BAD_GATEWAY,
+            "upstream_error",
+            format!("[OmniGate] 上游请求失败: {}", last_error)
+        )
     };
-    Ok(build_json_error(StatusCode::BAD_GATEWAY, "upstream_error", &msg).into_response())
+    Ok(build_json_error(status_code, error_type, &msg).into_response())
 }
 
 // ============================================================================
