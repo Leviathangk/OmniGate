@@ -2062,12 +2062,12 @@ function App() {
                 <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                   <button className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem" }}
                     onClick={() => importFileInputRef.current?.click()}>
-                    <Upload size={14} /> 导入
+                    <Download size={14} /> 导入
                   </button>
                   <input ref={importFileInputRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleImportFileChange} />
                   <button className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem" }}
                     onClick={handleExportProviders} disabled={isExporting}>
-                    <Download size={14} /> {isExporting ? "导出中..." : "导出"}
+                    <Upload size={14} /> {isExporting ? "导出中..." : "导出"}
                   </button>
                   <button className="btn-primary" onClick={() => { setShowAddProviderModal(true); setWizardStep(1); }}><Plus size={16} /> 添加新供应商</button>
                 </div>
@@ -2919,7 +2919,7 @@ function App() {
             <header className="modal-header-section">
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)))", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Upload size={18} style={{ color: "#fff" }} />
+                  <Download size={18} style={{ color: "#fff" }} />
                 </div>
                 <div>
                   <h3 style={{ fontSize: "1.05rem", fontWeight: 700, marginBottom: "2px" }}>导入供应商预览</h3>
