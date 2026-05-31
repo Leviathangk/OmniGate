@@ -447,6 +447,23 @@ impl DbManager {
         Ok(rows)
     }
 
+    pub fn update_provider_info(
+        &self,
+        id: &str,
+        name: &str,
+        api_url: &str,
+        api_key: &str,
+        protocol: &str,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE providers SET name = ?1, api_url = ?2, api_key = ?3, protocol = ?4 WHERE id = ?5",
+            rusqlite::params![name, api_url, api_key, protocol, id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn delete_provider(&self, id: &str) -> Result<(), String> {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM providers WHERE id = ?1;", rusqlite::params![id])

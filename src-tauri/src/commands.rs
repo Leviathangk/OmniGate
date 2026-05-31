@@ -133,6 +133,25 @@ pub fn add_provider(
 }
 
 #[tauri::command]
+pub fn update_provider_info(
+    id: String,
+    name: String,
+    api_url: String,
+    api_key: String,
+    protocol: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("供应商名称不能为空".to_string());
+    }
+    if api_url.trim().is_empty() {
+        return Err("API URL 不能为空".to_string());
+    }
+    state.db.update_provider_info(&id, &name, &api_url, &api_key, &protocol)?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn delete_provider(
     id: String,
     state: tauri::State<'_, crate::AppState>,
@@ -474,6 +493,172 @@ pub fn restore_codex_config() -> Result<(), String> {
     
     Ok(())
 }
+
+// ============================================================================
+// OpenCode 本地接管
+// ============================================================================
+
+fn get_opencode_config_dir() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".config").join("opencode")
+    } else {
+        PathBuf::from("/tmp/opencode")
+    }
+}
+
+/// 将 HashMap<model_name, model_name> 序列化为 opencode 的 models 字典格式：
+/// { "model-id": { "name": "model-id" } }
+fn build_opencode_models_dict(model_names: &std::collections::HashSet<String>) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    for name in model_names {
+        map.insert(name.clone(), serde_json::json!({ "name": name }));
+    }
+    serde_json::Value::Object(map)
+}
+
+#[tauri::command]
+pub fn hijack_opencode_config(
+    proxy_api_key: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    if !state.proxy_running.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("端口 3456 已被占用，网关服务启动失败！请尝试释放该端口（例如旧版的 OmniGate 残留）后重启客户端。".to_string());
+    }
+
+    let opencode_dir = get_opencode_config_dir();
+    if !opencode_dir.exists() {
+        fs::create_dir_all(&opencode_dir).map_err(|e| e.to_string())?;
+    }
+
+    let config_path = opencode_dir.join("opencode.json");
+    let config_bak_path = opencode_dir.join("opencode.json.bak");
+
+    // 读取或新建 opencode.json
+    let mut config: serde_json::Value = if config_path.exists() {
+        // 首次备份
+        if !config_bak_path.exists() {
+            fs::copy(&config_path, &config_bak_path).map_err(|e| e.to_string())?;
+        }
+        let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({
+            "$schema": "https://opencode.ai/config.json"
+        }))
+    } else {
+        serde_json::json!({
+            "$schema": "https://opencode.ai/config.json"
+        })
+    };
+
+    // 从数据库查询 opencode 客户端配置
+    let all_providers = state.db.get_all_providers().map_err(|e| e.to_string())?;
+    let client_config_providers = state.db.get_client_config_providers().map_err(|e| e.to_string())?;
+
+    // 构建全局供应商 Map（id -> ProviderRow）
+    let mut provider_map: std::collections::HashMap<String, &crate::database::ProviderRow> = std::collections::HashMap::new();
+    for p in &all_providers {
+        provider_map.insert(p.id.clone(), p);
+    }
+
+    // 按 client_id 分别读取各协议的供应商（3 个独立路由计划）
+    let collect_models_for_client = |client_id: &str| -> std::collections::HashSet<String> {
+        let mut models: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let cps: Vec<_> = client_config_providers.iter()
+            .filter(|cp| cp.client_id == client_id && cp.is_active)
+            .collect();
+        for cp in cps {
+            if let Some(p) = provider_map.get(&cp.provider_id) {
+                if !p.is_active { continue; }
+                if let Ok(ms) = state.db.get_models_by_provider(&p.id) {
+                    for m in ms.iter().filter(|m| m.is_active) {
+                        models.insert(m.name.clone());
+                    }
+                }
+            }
+        }
+        models
+    };
+
+    let claude_models = collect_models_for_client("opencode-claude");
+    let responses_models = collect_models_for_client("opencode-resp");
+    let chat_models = collect_models_for_client("opencode-chat");
+
+    // 确保 provider 字段存在
+    if !config.get("provider").is_some_and(|v| v.is_object()) {
+        config["provider"] = serde_json::json!({});
+    }
+
+    let base_url = "http://127.0.0.1:3456";
+
+    // 写入 omnigate-claude（Claude Messages 协议 → /opencode/claude）
+    if let Some(providers) = config["provider"].as_object_mut() {
+        providers.insert("omnigate-claude".to_string(), serde_json::json!({
+            "npm": "@ai-sdk/anthropic",
+            "name": "OmniGate (Claude)",
+            "options": {
+                "baseURL": format!("{}/opencode/claude/v1", base_url),
+                "apiKey": proxy_api_key
+            },
+            "models": build_opencode_models_dict(&claude_models)
+        }));
+
+        // 写入 omnigate-resp（Responses 协议 → /opencode/responses）
+        providers.insert("omnigate-resp".to_string(), serde_json::json!({
+            "npm": "@ai-sdk/openai",
+            "name": "OmniGate (Responses)",
+            "options": {
+                "baseURL": format!("{}/opencode/responses", base_url),
+                "apiKey": proxy_api_key
+            },
+            "models": build_opencode_models_dict(&responses_models)
+        }));
+
+        // 写入 omnigate-chat（Chat Completions 协议 → /opencode/chat）
+        providers.insert("omnigate-chat".to_string(), serde_json::json!({
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "OmniGate (Chat)",
+            "options": {
+                "baseURL": format!("{}/opencode/chat", base_url),
+                "apiKey": proxy_api_key
+            },
+            "models": build_opencode_models_dict(&chat_models)
+        }));
+    }
+
+    // 保存 opencode.json
+    let content = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    fs::write(&config_path, content).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restore_opencode_config() -> Result<(), String> {
+    let opencode_dir = get_opencode_config_dir();
+    let config_path = opencode_dir.join("opencode.json");
+    let config_bak_path = opencode_dir.join("opencode.json.bak");
+
+    if config_bak_path.exists() {
+        // 有备份：直接还原
+        fs::copy(&config_bak_path, &config_path).map_err(|e| e.to_string())?;
+        fs::remove_file(&config_bak_path).map_err(|e| e.to_string())?;
+    } else if config_path.exists() {
+        // 无备份：只删除注入的三个供应商 key
+        let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+        if let Ok(mut config) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(providers) = config["provider"].as_object_mut() {
+                providers.remove("omnigate-claude");
+                providers.remove("omnigate-resp");
+                providers.remove("omnigate-chat");
+            }
+            let new_content = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+            fs::write(&config_path, new_content).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
+
 
 // ============================================================================
 // Client Config

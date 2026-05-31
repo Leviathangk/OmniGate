@@ -1,7 +1,4 @@
-use axum::{
-    routing::{post, get},
-    Router,
-};
+use axum::{routing::post, Router};
 use std::sync::Arc;
 use super::balancer::Balancer;
 use super::handlers;
@@ -14,21 +11,29 @@ pub struct AppState {
 
 pub fn create_router(balancer: Arc<Balancer>, db: Arc<crate::database::DbManager>) -> Router {
     let http_client = reqwest::Client::new();
-    
+
     let state = Arc::new(AppState {
         balancer,
         http_client,
         db,
     });
 
-    Router::new()
-        // Example routes for Claude API
+    axum::Router::new()
+        // ── Claude 客户端 ────────────────────────────────────────────────────
         .route("/claude/v1/messages", post(handlers::handle_claude_messages))
-        // Example routes for OpenCode/OpenAI compatible API
-        .route("/opencode/v1/chat/completions", post(handlers::handle_opencode_chat))
-        // Codex interception route
+
+        // ── OpenCode 客户端（3 条独立路由，3 个独立路由计划）────────────────
+        // Claude 协议：omnigate-claude → @ai-sdk/anthropic
+        .route("/opencode/claude/v1/messages", post(handlers::handle_opencode_claude))
+        // Responses 协议：omnigate-resp → @ai-sdk/openai
+        .route("/opencode/responses/*path", axum::routing::any(handlers::handle_opencode_resp))
+        // Chat 协议：omnigate-chat → @ai-sdk/openai-compatible
+        .route("/opencode/chat/*path", axum::routing::any(handlers::handle_opencode_chat))
+
+        // ── Codex 客户端 ─────────────────────────────────────────────────────
         .route("/codex/*path", axum::routing::any(handlers::handle_codex_proxy))
-        // We can add a fallback or catch-all for testing
+
+        // Fallback
         .fallback(handlers::handle_fallback)
         .with_state(state)
 }

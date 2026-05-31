@@ -26,6 +26,7 @@ import {
   Activity,
   Sparkles,
   Eye,
+  EyeOff,
   Wrench,
   ArrowUpDown,
   Maximize2,
@@ -688,30 +689,12 @@ function App() {
   // UI交互与图表/客户端/设置状态
   // UI交互与图表/客户端/设置状态
   const [clientConfigs, setClientConfigs] = useState<ClientConfig[]>([
-    {
-      client_id: "claude",
-      is_enabled: false,
-      strategy: "priority",
-      retry_count: 2,
-      timeout_seconds: 30,
-      providers: [],
-    },
-    {
-      client_id: "codex",
-      is_enabled: false,
-      strategy: "priority",
-      retry_count: 3,
-      timeout_seconds: 45,
-      providers: [],
-    },
-    {
-      client_id: "opencode",
-      is_enabled: false,
-      strategy: "priority",
-      retry_count: 2,
-      timeout_seconds: 30,
-      providers: [],
-    },
+    { client_id: "claude",         is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+    { client_id: "codex",          is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45,  providers: [] },
+    { client_id: "opencode",       is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+    { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
+    { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
+    { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
   ]);
   const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
     default_client: "Claude",
@@ -760,6 +743,9 @@ function App() {
   // 供应商详情与模型管理弹窗状态
   const [selectedProviderForDetails, setSelectedProviderForDetails] = useState<Provider | null>(null);
   const [showProviderDetailsModal, setShowProviderDetailsModal] = useState<boolean>(false);
+  const [showProviderConnectionModal, setShowProviderConnectionModal] = useState<boolean>(false);
+  const [editConnectionData, setEditConnectionData] = useState<Provider | null>(null);
+  const [showConnectionApiKey, setShowConnectionApiKey] = useState<boolean>(false);
   const [isSyncingModels, setIsSyncingModels] = useState<boolean>(false);
   const [modelsSearchQuery, setModelsSearchQuery] = useState<string>("");
   const [manualModelName, setManualModelName] = useState<string>("");
@@ -861,19 +847,49 @@ function App() {
       }
       let targetConfigs = loadedClientConfigs;
       if (loadedClientConfigs && loadedClientConfigs.length > 0) {
-        // 先把 ref 设为 true，再更新 state。
-        // 这样当 React 批处理完成并触发 useEffect 时，
-        // clientConfigs 已经是从 DB 加载的真实数据，不会用空列表覆写。
+        // Merge: DB 数据优先，DB 里没有的 client_id 用默认值补齐
+        // 这样新增的 opencode-claude / opencode-resp / opencode-chat 可以自动初始化
+        const defaultClientConfigs: ClientConfig[] = [
+          { client_id: "claude",          is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+          { client_id: "codex",           is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45,  providers: [] },
+          { client_id: "opencode",        is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+          { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+          { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+          { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+        ];
+        const mergedConfigs = defaultClientConfigs.map(def => {
+          const fromDb = loadedClientConfigs.find((c: ClientConfig) => c.client_id === def.client_id);
+          return fromDb || def;
+        });
+        // 将 DB 里有但 defaults 里没有的条目也保留（向前兼容）
+        const extraFromDb = loadedClientConfigs.filter((c: ClientConfig) =>
+          !defaultClientConfigs.some(def => def.client_id === c.client_id)
+        );
+        const finalConfigs = [...mergedConfigs, ...extraFromDb];
+
+        // 将新补齐的 client_id 写回 DB（幂等，多次无害）
+        const missingIds = defaultClientConfigs.filter(def =>
+          !loadedClientConfigs.some((c: ClientConfig) => c.client_id === def.client_id)
+        );
+        if (missingIds.length > 0) {
+          invoke("save_client_configs", { configs: finalConfigs }).catch(console.error);
+        }
+
         clientConfigsReadyRef.current = true;
-        setClientConfigs(loadedClientConfigs);
+        setClientConfigs(finalConfigs);
+        targetConfigs = finalConfigs;
+
       } else {
         // DB 为空：直接用默认配置初始化，不经过 auto-save
         clientConfigsReadyRef.current = false;
         await invoke("save_client_configs", {
           configs: [
-            { client_id: "claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
-            { client_id: "codex",  is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45, providers: [] },
-            { client_id: "opencode", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
+            { client_id: "claude",          is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+            { client_id: "codex",           is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45,  providers: [] },
+            { client_id: "opencode",        is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+            { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+            { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+            { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
           ]
         });
         // 完成后允许 auto-save
@@ -897,6 +913,19 @@ function App() {
         } else {
           invoke("restore_codex_config").catch(console.error);
         }
+
+        const opencodeCfg = targetConfigs.find((c: ClientConfig) => c.client_id === "opencode");
+        if (opencodeCfg && opencodeCfg.is_enabled) {
+          invoke("hijack_opencode_config", {
+            proxyApiKey: hijackApiKey || "sk-omnigate-fallback"
+          }).catch((e) => {
+            console.error("OpenCode 启动接管失败:", e);
+            setClientConfigs(prev => prev.map(c => c.client_id === "opencode" ? { ...c, is_enabled: false } : c));
+            alert(String(e));
+          });
+        } else {
+          invoke("restore_opencode_config").catch(console.error);
+        }
       }
       
       setIsClientConfigsLoaded(true);
@@ -916,6 +945,13 @@ function App() {
   useEffect(() => {
     if (!clientConfigsReadyRef.current) return;
     invoke("save_client_configs", { configs: clientConfigs })
+      .then(() => {
+        // 若 OpenCode 接管已开启，保存后自动重新写入 opencode.json（更新模型字典）
+        const opencodeCfg = clientConfigs.find(c => c.client_id === "opencode");
+        if (opencodeCfg && opencodeCfg.is_enabled) {
+          invoke("hijack_opencode_config", { proxyApiKey: hijackApiKey }).catch(console.error);
+        }
+      })
       .catch(e => console.error("自动保存客户端配置失败:", e));
   }, [clientConfigs]);
 
@@ -944,6 +980,48 @@ function App() {
       setModels(modList);
     } catch (err) {
       console.error("加载模型失败:", err);
+    }
+  };
+
+  const handleOpenProviderConnection = (provider: Provider) => {
+    setEditConnectionData({ ...provider });
+    setShowConnectionApiKey(false); // 重置眼睛开关状态
+    setShowProviderConnectionModal(true);
+  };
+
+  const handleSaveProviderConnection = async () => {
+    if (!editConnectionData) return;
+    try {
+      await invoke("update_provider_info", {
+        id: editConnectionData.id,
+        name: editConnectionData.name,
+        apiUrl: editConnectionData.api_url,
+        apiKey: editConnectionData.api_key,
+        protocol: editConnectionData.protocol,
+      });
+      // 更新本地状态
+      setProviders(prev => prev.map(p => p.id === editConnectionData.id ? editConnectionData : p));
+      setShowProviderConnectionModal(false);
+      setEditConnectionData(null);
+      
+      // 同步到所有的 config 客户端（刷新可能的变更）
+      const codexCfg = clientConfigs.find(c => c.client_id === "codex");
+      if (codexCfg?.is_enabled) {
+        await invoke("hijack_codex_config", {
+          providerName: hijackProviderName || "custom",
+          baseUrl: hijackBaseUrl || "http://127.0.0.1:3456",
+          proxyApiKey: hijackApiKey || "sk-omnigate-fallback"
+        }).catch(console.error);
+      }
+      const openCodeCfg = clientConfigs.find(c => c.client_id === "opencode");
+      if (openCodeCfg?.is_enabled) {
+        await invoke("hijack_opencode_config", {
+          proxyApiKey: hijackApiKey || "sk-omnigate-fallback"
+        }).catch(console.error);
+      }
+      
+    } catch (err) {
+      alert("保存连接配置失败: " + err);
     }
   };
 
@@ -1013,7 +1091,16 @@ function App() {
     if (!config) return;
     const newEnabledState = !config.is_enabled;
 
-    setClientConfigs(prev => prev.map(c => c.client_id === clientId ? { ...c, is_enabled: newEnabledState } : c));
+    if (clientId === "opencode") {
+      // 联动控制：操作 opencode 总开关时，连带把三个协议子开关一起切掉
+      setClientConfigs(prev => prev.map(c => 
+        (c.client_id === "opencode" || c.client_id.startsWith("opencode-"))
+          ? { ...c, is_enabled: newEnabledState } 
+          : c
+      ));
+    } else {
+      setClientConfigs(prev => prev.map(c => c.client_id === clientId ? { ...c, is_enabled: newEnabledState } : c));
+    }
 
     if (clientId === "codex") {
       if (!newEnabledState) {
@@ -1028,7 +1115,6 @@ function App() {
         // Toggled ON -> hijack config
         try {
           if (!hijackApiKey) {
-            // Give it a tiny delay to wait for random key generation if it was just loaded
             await new Promise(r => setTimeout(r, 100));
           }
           await invoke("hijack_codex_config", {
@@ -1040,7 +1126,33 @@ function App() {
         } catch (e) {
           console.error("接管 Codex 配置失败", e);
           alert(String(e));
-          // 还原状态
+          setClientConfigs(prev => prev.map(c => c.client_id === clientId ? { ...c, is_enabled: false } : c));
+        }
+      }
+    }
+
+    if (clientId === "opencode") {
+      if (!newEnabledState) {
+        // Toggled OFF -> restore opencode.json
+        try {
+          await invoke("restore_opencode_config");
+          console.log("已还原 OpenCode 配置文件");
+        } catch (e) {
+          console.error("还原 OpenCode 配置失败", e);
+        }
+      } else {
+        // Toggled ON -> hijack opencode.json
+        try {
+          if (!hijackApiKey) {
+            await new Promise(r => setTimeout(r, 100));
+          }
+          await invoke("hijack_opencode_config", {
+            proxyApiKey: hijackApiKey || "sk-omnigate-fallback"
+          });
+          console.log("已接管 OpenCode 配置文件");
+        } catch (e) {
+          console.error("接管 OpenCode 配置失败", e);
+          alert(String(e));
           setClientConfigs(prev => prev.map(c => c.client_id === clientId ? { ...c, is_enabled: false } : c));
         }
       }
@@ -1642,7 +1754,8 @@ function App() {
                           </div>
                         </td>
                         <td>
-                          <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", marginRight: "8px" }} onClick={() => handleOpenProviderDetails(p)}>详情与模型</button>
+                          <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", marginRight: "8px" }} onClick={() => handleOpenProviderConnection(p)}>连接配置</button>
+                          <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", marginRight: "8px" }} onClick={() => handleOpenProviderDetails(p)}>模型信息</button>
                           <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", color: "hsl(var(--danger))", borderColor: "hsl(var(--danger) / 0.2)" }} onClick={() => handleDeleteProvider(p.id)}><Trash2 size={12} /></button>
                         </td>
                       </tr>
@@ -1665,7 +1778,8 @@ function App() {
                 <button className={`tab-select-btn ${clientSubTab === "opencode" ? "active" : ""}`} onClick={() => setClientSubTab("opencode")}>OpenCode 客户端配置</button>
               </div>
 
-              {clientConfigs.filter(c => c.client_id === clientSubTab).map((config, index) => (
+              {/* ── Claude / Codex 通用渲染（过滤掉 opencode-* 子 ID）──  */}
+              {clientSubTab !== "opencode" && clientConfigs.filter(c => c.client_id === clientSubTab).map((config, index) => (
                 <div className="panel-card" key={index}>
                   <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "20px" }}>
                     <div>
@@ -1919,18 +2033,256 @@ function App() {
                           </div>
                         </div>
                       )}
+
+                      {config.client_id === "opencode" && (
+                        <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+                          <div style={{ padding: "12px 14px", backgroundColor: "hsl(var(--primary) / 0.06)", border: "1px solid hsl(var(--primary) / 0.2)", borderRadius: "8px" }}>
+                            <div style={{ fontSize: "0.82rem", color: "hsl(var(--primary))", fontWeight: "600", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                              <FileText size={14} /> 接管后自动注入 3 个代理供应商
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+                              <div style={{ padding: "8px 10px", backgroundColor: "hsl(var(--bg-card))", borderRadius: "6px", border: "1px solid hsl(var(--border-color))" }}>
+                                <div style={{ fontSize: "0.75rem", fontWeight: "700", color: "hsl(var(--primary))", marginBottom: "4px" }}>omnigate-claude</div>
+                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: "1.4" }}>@ai-sdk/anthropic</div>
+                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/claude/v1 → Claude 协议供应商模型</div>
+                              </div>
+                              <div style={{ padding: "8px 10px", backgroundColor: "hsl(var(--bg-card))", borderRadius: "6px", border: "1px solid hsl(var(--border-color))" }}>
+                                <div style={{ fontSize: "0.75rem", fontWeight: "700", color: "hsl(var(--secondary))", marginBottom: "4px" }}>omnigate-resp</div>
+                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: "1.4" }}>@ai-sdk/openai</div>
+                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/codex → Responses 协议供应商模型</div>
+                              </div>
+                              <div style={{ padding: "8px 10px", backgroundColor: "hsl(var(--bg-card))", borderRadius: "6px", border: "1px solid hsl(var(--border-color))" }}>
+                                <div style={{ fontSize: "0.75rem", fontWeight: "700", color: "hsl(var(--warning))", marginBottom: "4px" }}>omnigate-chat</div>
+                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: "1.4" }}>@ai-sdk/openai-compatible</div>
+                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/opencode/v1 → Chat 协议供应商模型</div>
+                              </div>
+                            </div>
+                            <div style={{ marginTop: "8px", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                              💡 配置变更后自动同步更新模型字典，无需手动重新接管
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     
                     <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid hsl(var(--border-color))", display: "flex", alignItems: "center", gap: "8px" }}>
                       <FileText size={16} style={{ color: "var(--text-muted)" }} />
                       <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                        <strong>目标配置文件目录:</strong> <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "2px 6px", borderRadius: "4px" }}>{config.client_id === "claude" ? "~/.claude" : config.client_id === "codex" ? "~/.codex" : "~/.opencode"}</code>
+                        <strong>目标配置文件:</strong> <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "2px 6px", borderRadius: "4px" }}>{config.client_id === "claude" ? "~/.claude" : config.client_id === "codex" ? "~/.codex/config.toml" : "~/.config/opencode/opencode.json"}</code>
                       </span>
                     </div>
 
                   </div>
                 </div>
               ))}
+
+              {/* ── OpenCode 专属渲染（总开关 + 3 个协议子面板）── */}
+              {clientSubTab === "opencode" && (() => {
+                const masterCfg = clientConfigs.find(c => c.client_id === "opencode");
+                const claudeCfg = clientConfigs.find(c => c.client_id === "opencode-claude");
+                const respCfg   = clientConfigs.find(c => c.client_id === "opencode-resp");
+                const chatCfg   = clientConfigs.find(c => c.client_id === "opencode-chat");
+                if (!masterCfg) return null;
+
+                // 通用：供应商列表 + 策略面板渲染函数
+                const renderProviderPanel = (cfg: ClientConfig, label: string, protocol: string, accentColor: string, routeHint: string) => {
+                  if (!cfg) return null;
+                  return (
+                    <div className="panel-card" style={{ marginTop: "16px" }}>
+                      <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "12px", marginBottom: "16px" }}>
+                        <div>
+                          <h4 style={{ fontSize: "1rem", fontWeight: "700", color: accentColor }}>{label}</h4>
+                          <p style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>代理路由: <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "1px 5px", borderRadius: "3px" }}>http://127.0.0.1:3456{routeHint}</code>　→　此分组的供应商独立路由计划</p>
+                        </div>
+                      </div>
+
+                      {/* 策略 */}
+                      <div style={{ marginBottom: "16px" }}>
+                        <h5 style={{ fontSize: "0.82rem", fontWeight: "600", marginBottom: "10px" }}>供应商使用策略</h5>
+                        <div className="strategy-row">
+                          <div className={`strategy-card ${cfg.strategy === "random" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "random")}>
+                            <h4>🎲 随机切换 (负载均衡)</h4>
+                            <p>根据权重在所有启用供应商中随机分配。</p>
+                          </div>
+                          <div className={`strategy-card ${cfg.strategy === "priority" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "priority")}>
+                            <h4>📶 优先级顺序</h4>
+                            <p>严格按优先级降序，前者失效自动降级。</p>
+                          </div>
+                          <div className={`strategy-card ${cfg.strategy === "manual" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "manual")}>
+                            <h4>📌 手动选择</h4>
+                            <p>固定指定单一供应商，不开启轮换。</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 供应商列表 */}
+                      <div>
+                        <div className="card-header-row" style={{ marginBottom: "10px" }}>
+                          <h5 style={{ fontSize: "0.82rem", fontWeight: "600" }}>供应商列表及权重分配</h5>
+                          <button className="btn-secondary" style={{ padding: "5px 10px", fontSize: "0.72rem" }} onClick={() => {
+                            setAddingProviderProtocol(protocol);
+                            setAddingProviderForClient(cfg.client_id);
+                          }}><Plus size={13} /> 添加新成员</button>
+                        </div>
+                        <div className="responsive-table-container">
+                          <table className="data-table">
+                            <thead>
+                              <tr>
+                                <th style={{ width: "80px" }}>优先级</th>
+                                <th>供应商</th>
+                                <th>运行状态</th>
+                                <th style={{ width: "180px" }}>轮换权重</th>
+                                <th>启用状态</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cfg.providers.map((p, pIndex) => {
+                                const globalProvider = providers.find(gp => gp.id === p.id);
+                                const isGloballyDisabled = globalProvider ? !globalProvider.is_active : false;
+                                return (
+                                  <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : {}}>
+                                    <td>
+                                      <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                                        <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === 0 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, -1)}>↑</button>
+                                        <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === cfg.providers.length - 1 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, 1)}>↓</button>
+                                      </div>
+                                    </td>
+                                    <td style={{ fontWeight: "600" }}>
+                                      {p.name}
+                                      <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{p.api_url}</div>
+                                    </td>
+                                    <td>
+                                      {isGloballyDisabled ? (
+                                        <span className="status-badge" style={{ backgroundColor: "hsl(var(--danger) / 0.15)", color: "hsl(var(--danger))", border: "1px solid hsl(var(--danger) / 0.3)" }}>全局已禁用</span>
+                                      ) : (<span className="status-badge success">可用</span>)}
+                                    </td>
+                                    <td>
+                                      <input type="number" min="1" value={p.weight} disabled={isGloballyDisabled}
+                                        onChange={(e) => handleWeightChange(cfg.client_id, p.id, Number(e.target.value))}
+                                        style={{ width: "70px", padding: "3px 6px", borderRadius: "4px", border: "1px solid hsl(var(--border-color))", backgroundColor: "hsl(var(--bg-card))", color: "hsl(var(--text-primary))", cursor: isGloballyDisabled ? "not-allowed" : "text" }}
+                                      />
+                                    </td>
+                                    <td>
+                                      <div className="switch-container" style={{ cursor: isGloballyDisabled ? "not-allowed" : "pointer" }}
+                                        onClick={() => {
+                                          if (isGloballyDisabled) {
+                                            setToastMessage(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`);
+                                            return;
+                                          }
+                                          handleToggleClientProvider(cfg.client_id, p.id);
+                                        }}>
+                                        <div className={`switch-track ${p.is_active && !isGloballyDisabled ? "active" : ""}`}>
+                                          <div className="switch-thumb"></div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                              {addingProviderForClient === cfg.client_id && (
+                                <tr>
+                                  <td colSpan={2}>
+                                    <CustomSelect
+                                      value={addingProviderId}
+                                      onChange={(v) => {
+                                        setAddingProviderId(v);
+                                        setTimeout(() => {
+                                          if (v) {
+                                            const provider = providers.find(p => p.id === v);
+                                            if (provider) {
+                                              setClientConfigs(prev => prev.map(c => {
+                                                if (c.client_id === cfg.client_id) {
+                                                  if (c.providers.some(p => p.id === provider.id)) return c;
+                                                  return { ...c, providers: [...c.providers, { ...provider, weight: 1, is_active: true, sort_order: c.providers.length }] };
+                                                }
+                                                return c;
+                                              }));
+                                              setAddingProviderForClient(null);
+                                              setAddingProviderProtocol("");
+                                              setAddingProviderId("");
+                                            }
+                                          }
+                                        }, 0);
+                                      }}
+                                      options={[
+                                        { label: "请选择供应商...", value: "" },
+                                        ...providers
+                                          .filter(p => p.protocol === protocol && !cfg.providers.some(cp => cp.id === p.id))
+                                          .map(p => ({ label: p.name, value: p.id }))
+                                      ]}
+                                    />
+                                  </td>
+                                  <td>-</td><td>-</td>
+                                  <td><button className="btn-secondary" style={{ padding: "3px 7px", fontSize: "0.7rem" }} onClick={() => setAddingProviderForClient(null)}>取消</button></td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* 超时/重试 */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginTop: "14px" }}>
+                        <div className="form-group">
+                          <label>单点请求超时限制</label>
+                          <CustomSelect value={cfg.timeout_seconds} onChange={(v) => setClientConfigs(prev => prev.map(c => c.client_id === cfg.client_id ? { ...c, timeout_seconds: Number(v) } : c))}
+                            options={[{ value: 30, label: "30 秒" }, { value: 60, label: "60 秒" }, { value: 120, label: "120 秒" }, { value: 300, label: "300 秒" }]} />
+                        </div>
+                        <div className="form-group">
+                          <label>首选失败重试上限</label>
+                          <CustomSelect value={cfg.retry_count} onChange={(v) => setClientConfigs(prev => prev.map(c => c.client_id === cfg.client_id ? { ...c, retry_count: Number(v) } : c))}
+                            options={[{ value: 0, label: "不重试" }, { value: 1, label: "重试 1 次" }, { value: 2, label: "重试 2 次" }, { value: 3, label: "重试 3 次" }]} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                };
+
+                return (
+                  <div>
+                    {/* 总开关卡片 */}
+                    <div className="panel-card">
+                      <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "16px" }}>
+                        <div>
+                          <h3 style={{ fontSize: "1.2rem" }}>OpenCode 接管代理</h3>
+                          <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>开启后向 <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "1px 5px", borderRadius: "3px" }}>~/.config/opencode/opencode.json</code> 注入 3 个代理供应商，OpenCode 的流量经 OmniGate 转发</p>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                          <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
+                          <div className="switch-container" onClick={() => handleToggleClient("opencode")}>
+                            <div className={`switch-track ${masterCfg.is_enabled ? "active" : ""}`}>
+                              <div className="switch-thumb"></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      {/* 注入说明 */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+                        {[
+                          { key: "omnigate-claude", npm: "@ai-sdk/anthropic",        route: "/opencode/claude",    color: "hsl(var(--primary))",   label: "Claude 协议" },
+                          { key: "omnigate-resp",   npm: "@ai-sdk/openai",           route: "/opencode/responses", color: "hsl(var(--secondary))", label: "Responses 协议" },
+                          { key: "omnigate-chat",   npm: "@ai-sdk/openai-compatible", route: "/opencode/chat",      color: "hsl(var(--warning))",   label: "Chat 协议" },
+                        ].map(item => (
+                          <div key={item.key} style={{ padding: "10px 12px", backgroundColor: "hsl(var(--bg-app))", borderRadius: "7px", border: "1px solid hsl(var(--border-color))" }}>
+                            <div style={{ fontSize: "0.78rem", fontWeight: "700", color: item.color, marginBottom: "4px" }}>{item.key}</div>
+                            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>{item.npm}</div>
+                            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "2px" }}>{item.route} → {item.label}供应商</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: "10px", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                        💡 配置变更后自动同步更新模型字典，无需手动重新接管
+                      </div>
+                    </div>
+
+                    {/* 3 个独立协议子面板 */}
+                    {claudeCfg && renderProviderPanel(claudeCfg, "供应商列表及权重分配（Claude 协议）", "claude", "hsl(var(--primary))", "/opencode/claude")}
+                    {respCfg   && renderProviderPanel(respCfg,   "供应商列表及权重分配（Responses 协议）", "codex_responses", "hsl(var(--secondary))", "/opencode/responses")}
+                    {chatCfg   && renderProviderPanel(chatCfg,   "供应商列表及权重分配（Chat 协议）", "codex_chat", "hsl(var(--warning))", "/opencode/chat")}
+                  </div>
+                );
+              })()}
+
             </div>
           )}
 
@@ -2155,6 +2507,84 @@ function App() {
       </main>
 
       {/* ============================================================================
+          MODAL: 供应商连接配置
+         ============================================================================ */}
+      {showProviderConnectionModal && editConnectionData && (
+        <div className="modal-overlay">
+          <div className="modal-content-window" style={{ maxWidth: "560px", width: "90%" }}>
+            <header className="modal-header-section" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)))", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Server size={16} style={{ color: "#fff" }} />
+                </div>
+                <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1rem", margin: 0 }}>连接配置</h3>
+              </div>
+              <button
+                style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}
+                onClick={() => {
+                  setShowProviderConnectionModal(false);
+                  setEditConnectionData(null);
+                }}
+              >
+                <X size={15} />
+              </button>
+            </header>
+
+            <div className="modal-body-section" style={{ padding: "20px" }}>
+              <div className="form-group">
+                <label>供应商名称</label>
+                <input 
+                  value={editConnectionData.name} 
+                  onChange={(e) => setEditConnectionData({ ...editConnectionData, name: e.target.value })} 
+                />
+              </div>
+              <div className="form-group">
+                <label>协议类型</label>
+                <CustomSelect 
+                  value={editConnectionData.protocol} 
+                  onChange={(v) => setEditConnectionData({ ...editConnectionData, protocol: v })}
+                  options={[
+                    { value: "claude", label: "Claude 协议" },
+                    { value: "codex_responses", label: "Codex /responses 协议" },
+                    { value: "codex_chat", label: "Codex /chat 协议" }
+                  ]}
+                />
+              </div>
+              <div className="form-group">
+                <label>API 基础地址</label>
+                <input 
+                  value={editConnectionData.api_url} 
+                  onChange={(e) => setEditConnectionData({ ...editConnectionData, api_url: e.target.value })} 
+                />
+              </div>
+              <div className="form-group">
+                <label>API Key</label>
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <input 
+                    type={showConnectionApiKey ? "text" : "password"}
+                    value={editConnectionData.api_key} 
+                    onChange={(e) => setEditConnectionData({ ...editConnectionData, api_key: e.target.value })} 
+                    style={{ paddingRight: "36px", width: "100%" }}
+                  />
+                  <div 
+                    style={{ position: "absolute", right: "10px", cursor: "pointer", color: "var(--text-muted)", display: "flex", alignItems: "center" }}
+                    onClick={() => setShowConnectionApiKey(!showConnectionApiKey)}
+                  >
+                    {showConnectionApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
+                <button className="btn-secondary" onClick={() => setShowProviderConnectionModal(false)}>取消</button>
+                <button className="btn-primary" onClick={handleSaveProviderConnection}>保存配置</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================
           MODAL: ADD PROVIDER (添加供应商四步向导)
          ============================================================================ */}
       {/* ============================================================================
@@ -2172,7 +2602,7 @@ function App() {
                 </div>
                 <div>
                   <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1rem", margin: 0 }}>
-                    {selectedProviderForDetails.name}
+                    {selectedProviderForDetails.name} 模型管理
                   </h3>
                   <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontFamily: "monospace" }}>
                     {selectedProviderForDetails.api_url}
@@ -2192,62 +2622,6 @@ function App() {
 
             <div className="modal-body-section" style={{ display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", padding: "14px 20px", flex: 1 }}>
               
-              {/* ---- 上半：基本信息 ---- */}
-              <div style={{ backgroundColor: "rgba(255, 255, 255, 0.02)", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.05)", padding: "12px 16px" }}>
-                <h4 style={{ fontSize: "0.76rem", color: "var(--text-secondary)", fontWeight: "600", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Info size={12} /> 基本信息
-                </h4>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  <div className="form-group">
-                    <label>供应商名称</label>
-                    <input 
-                      value={selectedProviderForDetails.name} 
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setProviders(prev => prev.map(p => p.id === selectedProviderForDetails.id ? { ...p, name: v } : p));
-                        setSelectedProviderForDetails(prev => prev ? { ...prev, name: v } : null);
-                      }} 
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>协议类型</label>
-                    <CustomSelect 
-                      value={selectedProviderForDetails.protocol} 
-                      onChange={(v) => {
-                        setProviders(prev => prev.map(p => p.id === selectedProviderForDetails.id ? { ...p, protocol: v } : p));
-                        setSelectedProviderForDetails(prev => prev ? { ...prev, protocol: v } : null);
-                      }}
-                      options={[
-                        { value: "claude", label: "Claude 协议" },
-                        { value: "codex_responses", label: "Codex /responses 协议" },
-                        { value: "codex_chat", label: "Codex /chat 协议" }
-                      ]}
-                    />
-                  </div>
-                  <div className="form-group" style={{ gridColumn: "span 2" }}>
-                    <label>API 基础地址</label>
-                    <input 
-                      value={selectedProviderForDetails.api_url} 
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setProviders(prev => prev.map(p => p.id === selectedProviderForDetails.id ? { ...p, api_url: v } : p));
-                        setSelectedProviderForDetails(prev => prev ? { ...prev, api_url: v } : null);
-                      }} 
-                      style={{ marginBottom: "4px" }}
-                    />
-                    {selectedProviderForDetails.api_url.trim() && (() => {
-                      const { discover, forward } = getUrlPreview(selectedProviderForDetails.api_url, selectedProviderForDetails.protocol);
-                      return (
-                        <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "2px", paddingLeft: "4px", marginTop: "2px", lineHeight: "1.4" }}>
-                          <div><span style={{ opacity: 0.6 }}>发现端点：</span><code style={{ fontSize: "0.68rem", color: "var(--text-secondary)" }}>{discover}</code></div>
-                          <div><span style={{ opacity: 0.6 }}>对话转发：</span><code style={{ fontSize: "0.68rem", color: "var(--text-secondary)" }}>{forward}</code></div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-
               {/* ---- 下半：模型管理 (详情界面) ---- */}
               {(() => {
                 const providerModels = models.filter(m => m.provider_id === selectedProviderForDetails.id);

@@ -96,6 +96,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_providers,
             commands::add_provider,
+            commands::update_provider_info,
             commands::delete_provider,
             commands::toggle_provider,
             commands::get_models,
@@ -109,6 +110,8 @@ pub fn run() {
             commands::get_codex_provider_name,
             commands::hijack_codex_config,
             commands::restore_codex_config,
+            commands::hijack_opencode_config,
+            commands::restore_opencode_config,
             commands::get_client_configs,
             commands::save_client_configs,
             commands::get_today_traffic_trend,
