@@ -9,7 +9,6 @@ import {
   Sliders,
   Brain,
   Boxes,
-  LineChart,
   Settings,
   Sun,
   Moon,
@@ -35,7 +34,6 @@ import {
   ListPlus,
   RotateCw,
   AlertTriangle,
-  Zap,
   FileText
 } from "lucide-react";
 import "./App.css";
@@ -627,6 +625,51 @@ function App() {
   const [darkMode, setDarkMode] = useState<boolean>(true);
   const [statsPeriod, setStatsPeriod] = useState<number>(7);
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
+
+  const [cliStatus, setCliStatus] = useState<Record<string, boolean>>({
+    claude: false,
+    codex: false,
+    opencode: false,
+  });
+  const [globalPrompts, setGlobalPrompts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const checkAllClis = async () => {
+      try {
+        const c = await invoke<boolean>("check_cli_installed", { clientId: "claude" });
+        const x = await invoke<boolean>("check_cli_installed", { clientId: "codex" });
+        const o = await invoke<boolean>("check_cli_installed", { clientId: "opencode" });
+        setCliStatus({ claude: c, codex: x, opencode: o });
+      } catch (e) {
+        console.error("Failed to check CLIs:", e);
+      }
+    };
+    checkAllClis();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "global_prompts") {
+      ["claude", "codex", "opencode"].forEach(async (id) => {
+        try {
+           const content = await invoke<string>("read_external_prompt", { clientId: id });
+           setGlobalPrompts(prev => ({...prev, [id]: content}));
+        } catch(e) {
+           console.error("Failed to read external prompt", id, e);
+        }
+      });
+    }
+  }, [activeTab]);
+
+  const handleSaveGlobalPrompt = async (clientId: string) => {
+    try {
+      await invoke("write_external_prompt", { clientId, content: globalPrompts[clientId] || "" });
+      showToast(`${clientId} 全局提示词已保存到原生文件`, "success");
+      setTimeout(() => showToast("", "success"), 3000);
+    } catch(e: any) {
+      showToast(`保存失败: ${e}`, "error");
+      setTimeout(() => showToast("", "success"), 3000);
+    }
+  };
   
   // 核心数据状态
   
@@ -665,6 +708,13 @@ function App() {
   const [hasFetchedHijackInfo, setHasFetchedHijackInfo] = useState(false);
 
   const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState<"success" | "error" | "warning" | "info">("success");
+
+  const showToast = (msg: string, type: "success" | "error" | "warning" | "info" = "success") => {
+    setToastType(type);
+    setToastMessage(msg);
+  };
+
   useEffect(() => {
     if (toastMessage) {
       const timer = setTimeout(() => setToastMessage(""), 4000);
@@ -698,17 +748,9 @@ function App() {
     { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
     { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
   ]);
-  const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
-    default_client: "Claude",
-    default_strategy: "随机切换 (负载均衡)",
-    auto_failover: true,
-    global_timeout: 60,
-    global_retry: 2,
-    global_concurrency: 10,
-    request_logging: true,
-  });
 
   const [clientSubTab, setClientSubTab] = useState<string>("claude");
+  const [globalPromptSubTab, setGlobalPromptSubTab] = useState<string>("claude");
   const [settingsSubTab, setSettingsSubTab] = useState<string>("proxy");
   const [showAddProviderModal, setShowAddProviderModal] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<number>(1);
@@ -1433,8 +1475,22 @@ function App() {
     alert("技能提示词保存成功！");
   };
 
+  const renderCliMask = (clientId: string) => {
+    if (cliStatus[clientId]) return null;
+    const dirName = clientId === "opencode" ? "~/.config/opencode" : `~/.${clientId}`;
+    return (
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)", zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", borderRadius: "12px", border: "1px solid hsl(var(--border-color))" }}>
+        <AlertTriangle size={32} style={{ color: "var(--warning)", marginBottom: "16px" }} />
+        <h3 style={{ fontSize: "1.1rem", color: "white", marginBottom: "8px" }}>未检测到该 CLI 工具环境</h3>
+        <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+          目录 <code style={{ background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: "4px" }}>{dirName}</code> 不存在，暂不提供配置。请先安装对应的 CLI 工具。
+        </p>
+      </div>
+    );
+  };
+
   return (
-    <div className="app-container">
+    <div className={`app-container ${darkMode ? "dark" : ""}`}>
       {/* 顶部居中 Toast 弹窗 */}
       {toastMessage && (
         <div style={{
@@ -1442,7 +1498,7 @@ function App() {
           top: "20px",
           left: "50%",
           transform: "translateX(-50%)",
-          backgroundColor: "hsl(var(--danger))",
+          backgroundColor: toastType === "error" ? "hsl(var(--danger))" : toastType === "warning" ? "hsl(var(--warning))" : toastType === "success" ? "hsl(var(--primary))" : "hsl(var(--bg-card))",
           color: "white",
           padding: "12px 24px",
           borderRadius: "8px",
@@ -1454,7 +1510,7 @@ function App() {
           alignItems: "center",
           gap: "8px"
         }}>
-          <AlertTriangle size={18} />
+          {toastType === "error" ? <AlertTriangle size={18} /> : toastType === "success" ? <Check size={18} /> : <Info size={18} />}
           {toastMessage}
         </div>
       )}
@@ -1485,6 +1541,10 @@ function App() {
             <li className={`menu-item ${activeTab === "client_config" ? "active" : ""}`} onClick={() => setActiveTab("client_config")}>
               <div className="menu-icon"><Sliders size={17} /></div>
               <span>客户端配置</span>
+            </li>
+            <li className={`menu-item ${activeTab === "global_prompts" ? "active" : ""}`} onClick={() => setActiveTab("global_prompts")}>
+              <div className="menu-icon"><FileText size={17} /></div>
+              <span>全局提示词</span>
             </li>
             <li className={`menu-item ${activeTab === "skills" ? "active" : ""}`} onClick={() => setActiveTab("skills")}>
               <div className="menu-icon"><Brain size={17} /></div>
@@ -1540,6 +1600,7 @@ function App() {
               {activeTab === "overview" && "系统运行概览"}
               {activeTab === "providers" && "供应商管理"}
               {activeTab === "client_config" && "本地客户端配置接管"}
+              {activeTab === "global_prompts" && "一站式原生全局提示词管理"}
               {activeTab === "skills" && "Skill 技能提示词中心"}
               {activeTab === "mcp" && "MCP (Model Context Protocol) 插件"}
               {activeTab === "stats" && "审计分析统计"}
@@ -1550,6 +1611,7 @@ function App() {
               {activeTab === "providers" && "配置与接管各大 AI 节点通道协议"}
               {activeTab === "models" && "跨账户管理大模型激活列表及自动发现"}
               {activeTab === "client_config" && "自定义 AI 开发工具轮换策略及负载权重"}
+              {activeTab === "global_prompts" && "直接管控散落于系统各处的 CLI 原生系统人设"}
               {activeTab === "skills" && "定制专属 AI 代码评审、SQL 调优及 Regex 脚本"}
               {activeTab === "mcp" && "开启本地/远程 MCP 工具服务器连接"}
               {activeTab === "stats" && "多协议吞吐审计、模型活跃度及 Latency 耗时热图"}
@@ -1883,7 +1945,8 @@ function App() {
 
               {/* ── Claude / Codex 通用渲染（过滤掉 opencode-* 子 ID）──  */}
               {clientSubTab !== "opencode" && clientConfigs.filter(c => c.client_id === clientSubTab).map((config, index) => (
-                <div className="panel-card" key={index}>
+                <div className="panel-card" key={index} style={{ position: "relative" }}>
+                  {renderCliMask(config.client_id)}
                   <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "20px" }}>
                     <div>
                       <h3 style={{ textTransform: "capitalize", fontSize: "1.2rem" }}>{config.client_id} 接管代理</h3>
@@ -1994,7 +2057,7 @@ function App() {
                                       style={{ cursor: isGloballyDisabled ? "not-allowed" : "pointer" }}
                                       onClick={() => {
                                         if (isGloballyDisabled) {
-                                          setToastMessage(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`);
+                                          showToast(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`, "warning");
                                           return;
                                         }
                                         handleToggleClientProvider(config.client_id, p.id);
@@ -2124,7 +2187,7 @@ function App() {
                             onChange={e => {
                               setHijackProviderName(e.target.value);
                               if (config.is_enabled) {
-                                setToastMessage("修改 Provider 名称后，必须重新关闭并开启上方「接管状态」才能在本地文件中生效！");
+                                showToast("修改 Provider 名称后，必须重新关闭并开启上方「接管状态」才能在本地文件中生效！", "warning");
                               }
                             }} 
                             placeholder="custom" 
@@ -2269,7 +2332,7 @@ function App() {
                                       <div className="switch-container" style={{ cursor: isGloballyDisabled ? "not-allowed" : "pointer" }}
                                         onClick={() => {
                                           if (isGloballyDisabled) {
-                                            setToastMessage(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`);
+                                            showToast(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`, "warning");
                                             return;
                                           }
                                           handleToggleClientProvider(cfg.client_id, p.id);
@@ -2342,7 +2405,8 @@ function App() {
                 };
 
                 return (
-                  <div>
+                  <div style={{ position: "relative" }}>
+                    {renderCliMask("opencode")}
                     {/* 总开关卡片 */}
                     <div className="panel-card">
                       <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "16px" }}>
@@ -2386,6 +2450,51 @@ function App() {
                 );
               })()}
 
+            </div>
+          )}
+
+          {/* ============================================================================
+              TAB: GLOBAL PROMPTS (全局提示词)
+             ============================================================================ */}
+          {activeTab === "global_prompts" && (
+            <div className="tab-pane animate-fade-in" style={{ paddingBottom: "100px" }}>
+              <div className="tab-selector" style={{ marginBottom: "24px", display: "flex", alignItems: "center" }}>
+                <div style={{ display: "inline-flex", gap: "8px" }}>
+                  <button className={`tab-select-btn ${globalPromptSubTab === "claude" ? "active" : ""}`} onClick={() => setGlobalPromptSubTab("claude")}>Claude Code</button>
+                  <button className={`tab-select-btn ${globalPromptSubTab === "codex" ? "active" : ""}`} onClick={() => setGlobalPromptSubTab("codex")}>Codex CLI</button>
+                  <button className={`tab-select-btn ${globalPromptSubTab === "opencode" ? "active" : ""}`} onClick={() => setGlobalPromptSubTab("opencode")}>OpenCode CLI</button>
+                </div>
+              </div>
+
+              <div>
+                {["claude", "codex", "opencode"].filter(id => id === globalPromptSubTab).map(clientId => (
+                  <div className="panel-card" key={clientId} style={{ position: "relative", display: "flex", flexDirection: "column" }}>
+                    {renderCliMask(clientId)}
+                    <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "16px" }}>
+                      <div>
+                        <h3 style={{ textTransform: "capitalize", fontSize: "1.2rem" }}>
+                          {clientId === "claude" ? "Claude Code" : clientId === "codex" ? "Codex CLI" : "OpenCode CLI"} 全局系统提示词
+                        </h3>
+                        <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                          原生文件: <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "1px 5px", borderRadius: "3px" }}>
+                            {clientId === "opencode" ? "~/.config/opencode/AGENTS.md" : `~/.${clientId}/${clientId === "claude" ? "CLAUDE.md" : "AGENTS.md"}`}
+                          </code>
+                        </p>
+                      </div>
+                      <div>
+                        <button className="btn-primary" style={{ padding: "6px 14px", fontSize: "0.85rem", height: "auto" }} onClick={() => handleSaveGlobalPrompt(clientId)}>保存设置</button>
+                      </div>
+                    </div>
+                    
+                    <textarea 
+                      value={globalPrompts[clientId] || ""} 
+                      onChange={(e) => setGlobalPrompts(prev => ({...prev, [clientId]: e.target.value}))}
+                      style={{ height: "calc(100vh - 340px)", minHeight: "400px", width: "100%", backgroundColor: "hsl(var(--bg-app))", border: "1px solid hsl(var(--border-color))", borderRadius: "8px", padding: "12px", color: "var(--text-primary)", fontSize: "0.9rem", fontFamily: "monospace", resize: "none", outline: "none", boxSizing: "border-box" }}
+                      placeholder={`在此输入 ${clientId} 的全局系统提示词...`}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

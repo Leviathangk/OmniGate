@@ -866,3 +866,49 @@ pub fn get_heatmap_data(state: tauri::State<'_, crate::AppState>) -> Result<Vec<
     state.db.get_heatmap_data()
 }
 
+// ============================================================================
+// Global System Prompt File Management
+// ============================================================================
+use tauri::Manager;
+
+fn get_cli_prompt_path(app_handle: &tauri::AppHandle, client_id: &str) -> Result<std::path::PathBuf, String> {
+    let home_dir = app_handle.path().home_dir().map_err(|_| "Could not find home directory")?;
+    let path = match client_id {
+        "claude" => home_dir.join(".claude").join("CLAUDE.md"),
+        "opencode" => home_dir.join(".config").join("opencode").join("AGENTS.md"),
+        "codex" => home_dir.join(".codex").join("AGENTS.md"),
+        _ => return Err(format!("Unknown client_id for global prompt: {}", client_id)),
+    };
+    Ok(path)
+}
+
+#[tauri::command]
+pub fn check_cli_installed(client_id: String, app_handle: tauri::AppHandle) -> Result<bool, String> {
+    let path = get_cli_prompt_path(&app_handle, &client_id)?;
+    if let Some(parent) = path.parent() {
+        Ok(parent.exists() && parent.is_dir())
+    } else {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+pub fn read_external_prompt(client_id: String, app_handle: tauri::AppHandle) -> Result<String, String> {
+    let path = get_cli_prompt_path(&app_handle, &client_id)?;
+    if path.exists() {
+        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
+    } else {
+        Ok("".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn write_external_prompt(client_id: String, content: String, app_handle: tauri::AppHandle) -> Result<(), String> {
+    let path = get_cli_prompt_path(&app_handle, &client_id)?;
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            return Err(format!("目录 {} 不存在，不主动创建外部系统目录。", parent.display()));
+        }
+    }
+    std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
+}

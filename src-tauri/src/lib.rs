@@ -121,7 +121,10 @@ pub fn run() {
             commands::get_today_traffic_trend,
             commands::get_recent_activities,
             commands::get_model_usage_distribution,
-            commands::get_heatmap_data
+            commands::get_heatmap_data,
+            commands::check_cli_installed,
+            commands::read_external_prompt,
+            commands::write_external_prompt
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
