@@ -172,7 +172,15 @@ pub async fn handle_claude_messages(
                         let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
                         last_error = format!("HTTP {} - {}", status, body_text);
                         let latency = start_time.elapsed().as_millis() as u32;
-                        let _ = state.db.insert_usage_stat(&provider.id, &upstream_model_name, &req_path, status.as_u16(), latency, Some(&last_error));
+                        let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: upstream_model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: status.as_u16(),
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                         continue; // 重试同一供应商
                     }
 
@@ -185,7 +193,15 @@ pub async fn handle_claude_messages(
                         }
                     }
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &upstream_model_name, &req_path, status.as_u16(), latency, None);
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: upstream_model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: status.as_u16(),
+                            latency_ms: latency,
+                            error_message: None,
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     let body = Body::from_stream(stream);
                     return Ok(response_builder.body(body).unwrap());
@@ -193,13 +209,29 @@ pub async fn handle_claude_messages(
                 Ok(Err(e)) => {
                     last_error = format!("Reqwest error: {}", e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &upstream_model_name, &req_path, 502, latency, Some(&last_error));
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: upstream_model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: 502,
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     continue; // 重试同一供应商
                 }
                 Err(e) => {
                     last_error = format!("Timeout: {}", e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &upstream_model_name, &req_path, 504, latency, Some(&last_error));
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: upstream_model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: 504,
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     continue; // 重试同一供应商
                 }
             }
@@ -305,7 +337,15 @@ pub async fn handle_opencode_claude(
                         let body_text = res.text().await.unwrap_or_default();
                         last_error = format!("HTTP {} - {}", status, body_text);
                         let latency = start_time.elapsed().as_millis() as u32;
-                        let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, Some(&last_error));
+                        let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: status.as_u16(),
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                         continue;
                     }
                     let mut rb = Response::builder().status(status);
@@ -316,20 +356,44 @@ pub async fn handle_opencode_claude(
                         }
                     }
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, None);
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: status.as_u16(),
+                            latency_ms: latency,
+                            error_message: None,
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     return Ok(rb.body(Body::from_stream(stream)).unwrap());
                 }
                 Ok(Err(e)) => {
                     last_error = format!("Reqwest error: {}", e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 502, latency, Some(&last_error));
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: 502,
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     continue;
                 }
                 Err(e) => {
                     last_error = format!("Timeout: {}", e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 504, latency, Some(&last_error));
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: 504,
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     continue;
                 }
             }
@@ -426,7 +490,15 @@ pub async fn handle_opencode_resp(
                         let body_text = res.text().await.unwrap_or_default();
                         last_error = format!("HTTP {} - {}", status, body_text);
                         let latency = start_time.elapsed().as_millis() as u32;
-                        let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, Some(&last_error));
+                        let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: status.as_u16(),
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                         continue;
                     }
                     let mut rb = Response::builder().status(status);
@@ -437,20 +509,44 @@ pub async fn handle_opencode_resp(
                         }
                     }
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, None);
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: status.as_u16(),
+                            latency_ms: latency,
+                            error_message: None,
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     return Ok(rb.body(Body::from_stream(stream)).unwrap());
                 }
                 Ok(Err(e)) => {
                     last_error = format!("Reqwest error: {}", e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 502, latency, Some(&last_error));
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: 502,
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     continue;
                 }
                 Err(e) => {
                     last_error = format!("Timeout: {}", e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 504, latency, Some(&last_error));
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: 504,
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     continue;
                 }
             }
@@ -535,7 +631,15 @@ pub async fn handle_opencode_chat(
                         let body_text = res.text().await.unwrap_or_default();
                         last_error = format!("HTTP {} - {}", status, body_text);
                         let latency = start_time.elapsed().as_millis() as u32;
-                        let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, Some(&last_error));
+                        let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: status.as_u16(),
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                         continue;
                     }
                     let mut rb = Response::builder().status(status);
@@ -546,20 +650,44 @@ pub async fn handle_opencode_chat(
                         }
                     }
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, None);
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: status.as_u16(),
+                            latency_ms: latency,
+                            error_message: None,
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     return Ok(rb.body(Body::from_stream(stream)).unwrap());
                 }
                 Ok(Err(e)) => {
                     last_error = format!("Reqwest error: {}", e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 502, latency, Some(&last_error));
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: 502,
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     continue;
                 }
                 Err(e) => {
                     last_error = format!("Timeout: {}", e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 504, latency, Some(&last_error));
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: 504,
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     continue;
                 }
             }
@@ -675,7 +803,15 @@ pub async fn handle_codex_proxy(
                         let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
                         last_error = format!("HTTP {} - {}", status, body_text);
                         let latency = start_time.elapsed().as_millis() as u32;
-                        let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, Some(&last_error));
+                        let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: status.as_u16(),
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                         continue; // 重试同一供应商
                     }
 
@@ -688,7 +824,15 @@ pub async fn handle_codex_proxy(
                         }
                     }
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, status.as_u16(), latency, None);
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: status.as_u16(),
+                            latency_ms: latency,
+                            error_message: None,
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     let body = Body::from_stream(stream);
                     return Ok(response_builder.body(body).unwrap());
@@ -697,14 +841,30 @@ pub async fn handle_codex_proxy(
                     last_error = format!("Reqwest error: {}", e);
                     eprintln!("[OmniGate] Provider {} reqwest error: {}", provider.name, e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 502, latency, Some(&last_error));
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: 502,
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     continue; // 重试同一供应商
                 }
                 Err(e) => {
                     last_error = format!("Timeout: {}", e);
                     eprintln!("[OmniGate] Provider {} timeout: {}", provider.name, e);
                     let latency = start_time.elapsed().as_millis() as u32;
-                    let _ = state.db.insert_usage_stat(&provider.id, &model_name, &req_path, 504, latency, Some(&last_error));
+                    let _ = state.usage_tx.send(crate::database::UsageStatMessage {
+                            provider_id: provider.id.to_string(),
+                            model_name: model_name.to_string(),
+                            request_path: req_path.to_string(),
+                            status_code: 504,
+                            latency_ms: latency,
+                            error_message: Some(last_error.clone()),
+                            created_at: chrono::Utc::now().timestamp(),
+                        });
                     continue; // 重试同一供应商
                 }
             }

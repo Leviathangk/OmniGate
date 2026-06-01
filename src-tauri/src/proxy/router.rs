@@ -7,15 +7,21 @@ pub struct AppState {
     pub balancer: Arc<Balancer>,
     pub http_client: reqwest::Client,
     pub db: Arc<crate::database::DbManager>,
+    pub usage_tx: tokio::sync::mpsc::UnboundedSender<crate::database::UsageStatMessage>,
 }
 
-pub fn create_router(balancer: Arc<Balancer>, db: Arc<crate::database::DbManager>) -> Router {
+pub fn create_router(
+    balancer: Arc<Balancer>,
+    db: Arc<crate::database::DbManager>,
+    usage_tx: tokio::sync::mpsc::UnboundedSender<crate::database::UsageStatMessage>,
+) -> Router {
     let http_client = reqwest::Client::new();
 
     let state = Arc::new(AppState {
         balancer,
         http_client,
         db,
+        usage_tx,
     });
 
     axum::Router::new()

@@ -107,25 +107,46 @@ pub struct DbManager {
     pub conn: Mutex<Connection>,
 }
 
+#[derive(Debug, Clone)]
+pub struct UsageStatMessage {
+    pub provider_id: String,
+    pub model_name: String,
+    pub request_path: String,
+    pub status_code: u16,
+    pub latency_ms: u32,
+    pub error_message: Option<String>,
+    pub created_at: i64,
+}
+
 impl DbManager {
 
-    pub fn insert_usage_stat(
-        &self,
-        provider_id: &str,
-        model_name: &str,
-        request_path: &str,
-        status_code: u16,
-        latency_ms: u32,
-        error_message: Option<&str>,
-    ) -> Result<(), String> {
-        let id = uuid::Uuid::new_v4().to_string();
-        let created_at = chrono::Utc::now().timestamp();
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "INSERT INTO usage_statistics (id, provider_id, model_name, request_path, status_code, latency_ms, error_message, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![id, provider_id, model_name, request_path, status_code, latency_ms, error_message, created_at]
-        ).map_err(|e| e.to_string())?;
+    pub fn batch_insert_usage_stats(&self, stats: Vec<UsageStatMessage>) -> Result<(), String> {
+        if stats.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO usage_statistics (id, provider_id, model_name, request_path, status_code, latency_ms, error_message, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
+            ).map_err(|e| e.to_string())?;
+            
+            for stat in stats {
+                let id = uuid::Uuid::new_v4().to_string();
+                stmt.execute(rusqlite::params![
+                    id,
+                    stat.provider_id,
+                    stat.model_name,
+                    stat.request_path,
+                    stat.status_code,
+                    stat.latency_ms,
+                    stat.error_message,
+                    stat.created_at
+                ]).map_err(|e| e.to_string())?;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
         Ok(())
     }
 
