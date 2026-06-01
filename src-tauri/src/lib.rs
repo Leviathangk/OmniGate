@@ -17,8 +17,13 @@ pub struct AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init());
+
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+
+    builder
         .setup(|app| {
             // 在用户配置路径下初始化数据库并建表
             let config_dir = app.path().app_config_dir()
