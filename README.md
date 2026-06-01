@@ -14,6 +14,10 @@
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey?style=for-the-badge&logo=apple" alt="Platforms" />
 </p>
 
+<p align="center">
+  <strong>🔗 官方展示主页：<a href="https://leviathangk.github.io/OmniGate" target="_blank">leviathangk.github.io/OmniGate</a></strong>
+</p>
+
 ---
 
 ## 🌟 项目愿景
