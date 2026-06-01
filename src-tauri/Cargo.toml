@@ -1,6 +1,6 @@
 [package]
 name = "omnigate"
-version = "0.1.0"
+version = "0.1.6"
 description = "AI Account Rotator & Manager"
 authors = ["you"]
 edition = "2021"
@@ -36,4 +36,3 @@ toml_edit = "0.22"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-window-state = "2"
-
