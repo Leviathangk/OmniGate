@@ -38,7 +38,7 @@ import { OverviewTab } from "./components/tabs/OverviewTab";
 import { ProvidersTab } from "./components/tabs/ProvidersTab";
 import { ClientConfigTab } from "./components/tabs/ClientConfigTab";
 import { GlobalPromptsTab } from "./components/tabs/GlobalPromptsTab";
-import { SkillsTab } from "./components/tabs/SkillsTab";
+
 import { SettingsTab } from "./components/tabs/SettingsTab";
 import { ConnectionModal } from "./components/modals/ConnectionModal";
 import { MappingModal } from "./components/modals/MappingModal";
@@ -133,8 +133,6 @@ interface UsageOverview {
   active_providers: number;
   total_models: number;
   active_models: number;
-  total_skills: number;
-  active_skills: number;
   total_mcp: number;
   active_mcp: number;
   today_requests: number;
@@ -694,7 +692,6 @@ function App() {
   const [overviewData, setOverviewData] = useState<UsageOverview>({
     total_providers: 0, active_providers: 0,
     total_models: 0, active_models: 0,
-    total_skills: 0, active_skills: 0,
     total_mcp: 0, active_mcp: 0,
     today_requests: 0, today_requests_growth: "+0%",
     today_tokens: "0", today_tokens_growth: "+0%"
@@ -702,7 +699,7 @@ function App() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
-  const [skills, setSkills] = useState<Skill[]>([]);
+
 
   // Codex 拦截代理状态
   const [hijackBaseUrl, setHijackBaseUrl] = useState("http://127.0.0.1:3456");
@@ -788,14 +785,6 @@ function App() {
   const [newMcpCmd, setNewMcpCmd] = useState<string>("");
   const [newMcpArgs, setNewMcpArgs] = useState<string>("");
   
-  // 新建 Skill 状态
-  const [newSkillName, setNewSkillName] = useState<string>("");
-  const [newSkillDesc, setNewSkillDesc] = useState<string>("");
-  const [newSkillPrompt, setNewSkillPrompt] = useState<string>("");
-  
-  // 技能编辑器活动对象
-  const [editingSkillId, setEditingSkillId] = useState<string>("s1");
-  const [skillEditorContent, setSkillEditorContent] = useState<string>("");
 
   // 供应商详情与模型管理弹窗状态
   const [selectedProviderForDetails, setSelectedProviderForDetails] = useState<Provider | null>(null);
@@ -871,11 +860,11 @@ function App() {
   // 加载核心数据（从真实 SQLite 后端）
   const loadData = async () => {
     try {
-      const [overview, provList, mcpList, skillList, loadedClientConfigs, traffic, recent, dist, heatmap] = await Promise.all([
+      const [overview, provList, mcpList, loadedClientConfigs, traffic, recent, dist, heatmap] = await Promise.all([
         invoke<UsageOverview>("get_usage_overview"),
         invoke<Provider[]>("get_providers"),
         invoke<McpServer[]>("get_mcp_servers"),
-        invoke<Skill[]>("get_skills"),
+
         invoke<ClientConfig[]>("get_client_configs"),
         invoke<TrafficPoint[]>("get_today_traffic_trend"),
         invoke<RecentActivity[]>("get_recent_activities", { limit: 10 }),
@@ -889,12 +878,7 @@ function App() {
       setOverviewData(overview);
       setProviders(provList);
       setMcpServers(mcpList);
-      setSkills(skillList);
-      if (skillList.length > 0) {
-        const first = skillList[0];
-        setEditingSkillId(first.id);
-        setSkillEditorContent(first.content);
-      }
+
       let targetConfigs = loadedClientConfigs;
       if (loadedClientConfigs && loadedClientConfigs.length > 0) {
         // Merge: DB 数据优先，DB 里没有的 client_id 用默认值补齐
@@ -1001,14 +985,6 @@ function App() {
       })
       .catch(e => console.error("自动保存客户端配置失败:", e));
   }, [clientConfigs]);
-
-  // 当选择 of 编辑技能变化时
-  useEffect(() => {
-    const activeSkill = skills.find(s => s.id === editingSkillId);
-    if (activeSkill) {
-      setSkillEditorContent(activeSkill.content);
-    }
-  }, [editingSkillId, skills]);
 
   // ============================================================================
   // 事件处理逻辑
@@ -1475,10 +1451,6 @@ function App() {
     setMcpServers(prev => prev.map(s => s.id === id ? { ...s, is_active: !s.is_active } : s));
   };
 
-  const handleToggleSkill = (id: string) => {
-    setSkills(prev => prev.map(s => s.id === id ? { ...s, is_active: !s.is_active } : s));
-  };
-
   // 详情：手动添加单个模型
   const handleManualAddModel = async () => {
     if (!selectedProviderForDetails) return;
@@ -1604,33 +1576,6 @@ function App() {
     alert("MCP 服务添加成功！");
   };
 
-  // 添加 Skill 技能
-  const handleAddSkill = () => {
-    if (!newSkillName || !newSkillPrompt) return;
-    const newSkill: Skill = {
-      id: "skill_" + Math.random().toString(36).substring(7),
-      name: newSkillName,
-      description: newSkillDesc || "自定义技能",
-      content: newSkillPrompt,
-      is_active: true
-    };
-    setSkills(prev => [...prev, newSkill]);
-    setOverviewData(prev => ({
-      ...prev,
-      total_skills: prev.total_skills + 1,
-      active_skills: prev.active_skills + 1
-    }));
-    setNewSkillName("");
-    setNewSkillDesc("");
-    setNewSkillPrompt("");
-    alert("Skill 技能添加成功！");
-  };
-
-  // 保存技能 prompt 调整
-  const handleSaveSkillPrompt = () => {
-    setSkills(prev => prev.map(s => s.id === editingSkillId ? { ...s, content: skillEditorContent } : s));
-    alert("技能提示词保存成功！");
-  };
 
   const renderCliMask = (clientId: string) => {
     if (cliStatus[clientId]) return null;
@@ -1769,7 +1714,6 @@ function App() {
               {activeTab === "providers" && "供应商管理"}
               {activeTab === "client_config" && "本地客户端配置接管"}
               {activeTab === "global_prompts" && "一站式原生全局提示词管理"}
-              {activeTab === "skills" && "Skill 技能提示词中心"}
               {activeTab === "mcp" && "MCP (Model Context Protocol) 插件"}
               {activeTab === "stats" && "审计分析统计"}
               {activeTab === "settings" && "系统全局设置"}
@@ -1780,7 +1724,6 @@ function App() {
               {activeTab === "models" && "跨账户管理大模型激活列表及自动发现"}
               {activeTab === "client_config" && "自定义 AI 开发工具轮换策略及负载权重"}
               {activeTab === "global_prompts" && "直接管控散落于系统各处的 CLI 原生系统人设"}
-              {activeTab === "skills" && "定制专属 AI 代码评审、SQL 调优及 Regex 脚本"}
               {activeTab === "mcp" && "开启本地/远程 MCP 工具服务器连接"}
               {activeTab === "stats" && "多协议吞吐审计、模型活跃度及 Latency 耗时热图"}
               {activeTab === "settings" && "配置默认接管端口、重试及降级逻辑"}
