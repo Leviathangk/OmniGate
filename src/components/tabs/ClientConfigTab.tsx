@@ -1,0 +1,567 @@
+import React from "react";
+import { Plus, AlertTriangle, FileText } from "lucide-react";
+import { CustomSelect, Provider, ClientConfig } from "../../App";
+
+interface ClientConfigTabProps {
+  clientSubTab: string;
+  setClientSubTab: (tab: string) => void;
+  clientConfigs: ClientConfig[];
+  renderCliMask: (clientId: string) => React.ReactNode;
+  handleToggleClient: (clientId: string) => void;
+  handleStrategyChange: (clientId: string, strategy: string) => void;
+  setAddingProviderForClient: (clientId: string | null) => void;
+  providers: Provider[];
+  handleMoveProvider: (clientId: string, pIndex: number, dir: number) => void;
+  handleWeightChange: (clientId: string, providerId: string, weight: number) => void;
+  showToast: (msg: string, type?: "success" | "error" | "warning" | "info") => void;
+  handleToggleClientProvider: (clientId: string, providerId: string) => void;
+  addingProviderForClient: string | null;
+  addingProviderProtocol: string;
+  setAddingProviderProtocol: (protocol: string) => void;
+  addingProviderId: string;
+  setAddingProviderId: (id: string) => void;
+  setClientConfigs: React.Dispatch<React.SetStateAction<ClientConfig[]>>;
+  hijackProviderName: string;
+  setHijackProviderName: (name: string) => void;
+}
+
+export function ClientConfigTab({
+  clientSubTab,
+  setClientSubTab,
+  clientConfigs,
+  renderCliMask,
+  handleToggleClient,
+  handleStrategyChange,
+  setAddingProviderForClient,
+  providers,
+  handleMoveProvider,
+  handleWeightChange,
+  showToast,
+  handleToggleClientProvider,
+  addingProviderForClient,
+  addingProviderProtocol,
+  setAddingProviderProtocol,
+  addingProviderId,
+  setAddingProviderId,
+  setClientConfigs,
+  hijackProviderName,
+  setHijackProviderName
+}: ClientConfigTabProps) {
+  return (
+    <div>
+      <div className="tabs-control-row">
+        <button className={`tab-select-btn ${clientSubTab === "claude" ? "active" : ""}`} onClick={() => setClientSubTab("claude")}>Claude 客户端配置</button>
+        <button className={`tab-select-btn ${clientSubTab === "codex" ? "active" : ""}`} onClick={() => setClientSubTab("codex")}>Codex 客户端配置</button>
+        <button className={`tab-select-btn ${clientSubTab === "opencode" ? "active" : ""}`} onClick={() => setClientSubTab("opencode")}>OpenCode 客户端配置</button>
+      </div>
+
+      {/* ── Claude / Codex 通用渲染（过滤掉 opencode-* 子 ID）──  */}
+      {clientSubTab !== "opencode" && clientConfigs.filter(c => c.client_id === clientSubTab).map((config, index) => (
+        <div className="panel-card" key={index} style={{ position: "relative" }}>
+          {renderCliMask(config.client_id)}
+          <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "20px" }}>
+            <div>
+              <h3 style={{ textTransform: "capitalize", fontSize: "1.2rem" }}>{config.client_id} 接管代理</h3>
+              <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>开启后本地客户端的流量将会经过 OmniGate 分流轮换</p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
+              <div className="switch-container" onClick={() => handleToggleClient(config.client_id)}>
+                <div className={`switch-track ${config.is_enabled ? "active" : ""}`}>
+                  <div className="switch-thumb"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="priority-config-container">
+            <div>
+              <h4 style={{ fontSize: "0.88rem", fontWeight: "600", marginBottom: "12px" }}>供应商使用策略</h4>
+              <div className="strategy-row">
+                <div className={`strategy-card ${config.strategy === "random" ? "active" : ""}`} onClick={() => handleStrategyChange(config.client_id, "random")}>
+                  <h4>🎲 随机切换 (负载均衡)</h4>
+                  <p>根据设置的权重在所有启用的供应商中进行分配，实现最优防风控策略。</p>
+                </div>
+                <div className={`strategy-card ${config.strategy === "priority" ? "active" : ""}`} onClick={() => handleStrategyChange(config.client_id, "priority")}>
+                  <h4>📶 优先级顺序</h4>
+                  <p>严格按照优先级降序（权重顺序）发起请求，当前首选失效时自动启用降级供应商。</p>
+                </div>
+                <div className={`strategy-card ${config.strategy === "manual" ? "active" : ""}`} onClick={() => handleStrategyChange(config.client_id, "manual")}>
+                  <h4>📌 手动选择</h4>
+                  <p>固定指定某一个特定账号作为唯一转发终点，不开启轮换模式。</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="card-header-row" style={{ marginBottom: "10px" }}>
+                <h4 style={{ fontSize: "0.88rem", fontWeight: "600" }}>供应商列表及权重分配</h4>
+                <button className="btn-secondary" style={{ padding: "6px 12px", fontSize: "0.76rem" }} onClick={() => setAddingProviderForClient(config.client_id)}><Plus size={14} /> 添加新成员</button>
+              </div>
+
+              <div className="responsive-table-container">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "80px" }}>优先级</th>
+                      <th>供应商</th>
+                      <th>运行状态</th>
+                      <th style={{ width: "200px" }}>轮换权重 (Weight)</th>
+                      <th>启用状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {config.providers.map((p, pIndex) => {
+                      // 查询全局供应商表，判断该供应商是否已被全局禁用
+                      const globalProvider = providers.find(gp => gp.id === p.id);
+                      const isGloballyDisabled = globalProvider ? !globalProvider.is_active : false;
+
+                      return (
+                        <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : {}}>
+                          <td>
+                            <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                              <button
+                                className="btn-secondary"
+                                style={{ padding: "2px 4px", fontSize: "0.6rem" }}
+                                disabled={pIndex === 0 || isGloballyDisabled}
+                                onClick={() => handleMoveProvider(config.client_id, pIndex, -1)}
+                              >↑</button>
+                              <button
+                                className="btn-secondary"
+                                style={{ padding: "2px 4px", fontSize: "0.6rem" }}
+                                disabled={pIndex === config.providers.length - 1 || isGloballyDisabled}
+                                onClick={() => handleMoveProvider(config.client_id, pIndex, 1)}
+                              >↓</button>
+                            </div>
+                          </td>
+                          <td style={{ fontWeight: "600" }}>
+                            {p.name}
+                            <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{p.api_url}</div>
+                          </td>
+                          <td>
+                            {isGloballyDisabled ? (
+                              <span className="status-badge" style={{ backgroundColor: "hsl(var(--danger) / 0.15)", color: "hsl(var(--danger))", border: "1px solid hsl(var(--danger) / 0.3)" }}>
+                                全局已禁用
+                              </span>
+                            ) : (
+                              <span className="status-badge success">可用</span>
+                            )}
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              min="1"
+                              value={p.weight}
+                              disabled={isGloballyDisabled}
+                              onChange={(e) => handleWeightChange(config.client_id, p.id, Number(e.target.value))}
+                              style={{
+                                width: "80px", padding: "4px 8px", borderRadius: "4px",
+                                border: "1px solid hsl(var(--border-color))",
+                                backgroundColor: "hsl(var(--bg-card))",
+                                color: "hsl(var(--text-primary))",
+                                cursor: isGloballyDisabled ? "not-allowed" : "text"
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <div
+                              className="switch-container"
+                              style={{ cursor: isGloballyDisabled ? "not-allowed" : "pointer" }}
+                              onClick={() => {
+                                if (isGloballyDisabled) {
+                                  showToast(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`, "warning");
+                                  return;
+                                }
+                                handleToggleClientProvider(config.client_id, p.id);
+                              }}
+                            >
+                              <div className={`switch-track ${p.is_active && !isGloballyDisabled ? "active" : ""}`}>
+                                <div className="switch-thumb"></div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {addingProviderForClient === config.client_id && (
+                      <tr>
+                        <td colSpan={2}>
+                          <div style={{ display: "flex", gap: "10px", width: "100%" }}>
+                            <div style={{ flex: "0 0 160px" }}>
+                              <CustomSelect
+                                value={addingProviderProtocol}
+                                onChange={(v: string) => {
+                                  setAddingProviderProtocol(v);
+                                  setAddingProviderId("");
+                                }}
+                                options={[
+                                  { label: "选择协议", value: "" },
+                                  ...(config.client_id === "claude" ? [{ label: "Claude 协议", value: "claude" }] : []),
+                                  ...(config.client_id === "codex" ? [{ label: "Codex /responses", value: "codex_responses" }] : []),
+                                  ...(config.client_id === "opencode" ? [
+                                    { label: "Claude 协议", value: "claude" },
+                                    { label: "Codex /responses", value: "codex_responses" },
+                                    { label: "Codex /chat", value: "codex_chat" }
+                                  ] : [])
+                                ]}
+                              />
+                            </div>
+                            <div style={{ flex: "1" }}>
+                              <CustomSelect
+                                value={addingProviderId}
+                                onChange={(v: string) => {
+                                  setAddingProviderId(v);
+                                  // 延迟执行添加，因为 setState 是异步的
+                                  setTimeout(() => {
+                                    if (v) {
+                                      const provider = providers.find(p => p.id === v);
+                                      if (provider) {
+                                        setClientConfigs(prev => prev.map(c => {
+                                          if (c.client_id === config.client_id) {
+                                            if (c.providers.some(p => p.id === provider.id)) return c;
+                                            return { ...c, providers: [...c.providers, { ...provider, weight: 1, is_active: true, priority: c.providers.length }] };
+                                          }
+                                          return c;
+                                        }));
+                                        setAddingProviderForClient(null);
+                                        setAddingProviderProtocol("");
+                                        setAddingProviderId("");
+                                      }
+                                    }
+                                  }, 0);
+                                }}
+                                options={[
+                                  { label: "请选择供应商...", value: "" },
+                                  ...providers
+                                    .filter(p => p.protocol === addingProviderProtocol && !config.providers.some(cp => cp.id === p.id))
+                                    .map(p => ({ label: p.name, value: p.id }))
+                                ]}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>
+                          <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem" }} onClick={() => setAddingProviderForClient(null)}>取消</button>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
+              <div className="form-group">
+                <label>单点请求超时限制</label>
+                <CustomSelect 
+                  value={config.timeout_seconds} 
+                  onChange={(v: string | number) => {
+                    const newTimeout = Number(v);
+                    setClientConfigs(prev => prev.map(c => c.client_id === config.client_id ? { ...c, timeout_seconds: newTimeout } : c));
+                  }}
+                  options={[
+                    { value: 30, label: "30 秒" },
+                    { value: 60, label: "60 秒" },
+                    { value: 120, label: "120 秒" },
+                    { value: 300, label: "300 秒" }
+                  ]}
+                />
+              </div>
+              <div className="form-group">
+                <label>首选失败重试上限</label>
+                <CustomSelect 
+                  value={config.retry_count} 
+                  onChange={(v: string | number) => {
+                    const newRetry = Number(v);
+                    setClientConfigs(prev => prev.map(c => c.client_id === config.client_id ? { ...c, retry_count: newRetry } : c));
+                  }}
+                  options={[
+                    { value: 0, label: "不重试" },
+                    { value: 1, label: "重试 1 次" },
+                    { value: 2, label: "重试 2 次" },
+                    { value: 3, label: "重试 3 次" }
+                  ]}
+                />
+              </div>
+              
+              {config.client_id === "codex" && (
+                <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+                  <label style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Provider 名称 (model_provider)</span>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>自动读取: {hijackProviderName || "无"}</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    className="modal-input" 
+                    value={hijackProviderName} 
+                    onChange={e => {
+                      setHijackProviderName(e.target.value);
+                      if (config.is_enabled) {
+                        showToast("修改 Provider 名称后，必须重新关闭并开启上方「接管状态」才能在本地文件中生效！", "warning");
+                      }
+                    }} 
+                    placeholder="custom" 
+                  />
+                  <div style={{ marginTop: "8px", padding: "8px 12px", backgroundColor: "hsl(var(--warning) / 0.1)", border: "1px solid hsl(var(--warning) / 0.3)", borderRadius: "6px" }}>
+                    <span style={{ fontSize: "0.8rem", color: "hsl(var(--warning))", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <AlertTriangle size={14} /> <strong>警告：</strong>修改该项可能导致 Codex 历史会话丢失，强烈不建议修改。
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {config.client_id === "opencode" && (
+                <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ padding: "12px 14px", backgroundColor: "hsl(var(--primary) / 0.06)", border: "1px solid hsl(var(--primary) / 0.2)", borderRadius: "8px" }}>
+                    <div style={{ fontSize: "0.82rem", color: "hsl(var(--primary))", fontWeight: "600", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <FileText size={14} /> 接管后自动注入 3 个代理供应商
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+                      <div style={{ padding: "8px 10px", backgroundColor: "hsl(var(--bg-card))", borderRadius: "6px", border: "1px solid hsl(var(--border-color))" }}>
+                        <div style={{ fontSize: "0.75rem", fontWeight: "700", color: "hsl(var(--primary))", marginBottom: "4px" }}>omnigate-claude</div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: "1.4" }}>@ai-sdk/anthropic</div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/claude/v1 → Claude 协议供应商模型</div>
+                      </div>
+                      <div style={{ padding: "8px 10px", backgroundColor: "hsl(var(--bg-card))", borderRadius: "6px", border: "1px solid hsl(var(--border-color))" }}>
+                        <div style={{ fontSize: "0.75rem", fontWeight: "700", color: "hsl(var(--secondary))", marginBottom: "4px" }}>omnigate-resp</div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: "1.4" }}>@ai-sdk/openai</div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/codex → Responses 协议供应商模型</div>
+                      </div>
+                      <div style={{ padding: "8px 10px", backgroundColor: "hsl(var(--bg-card))", borderRadius: "6px", border: "1px solid hsl(var(--border-color))" }}>
+                        <div style={{ fontSize: "0.75rem", fontWeight: "700", color: "hsl(var(--warning))", marginBottom: "4px" }}>omnigate-chat</div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: "1.4" }}>@ai-sdk/openai-compatible</div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/opencode/v1 → Chat 协议供应商模型</div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: "8px", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                      💡 配置变更后自动同步更新模型字典，无需手动重新接管
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid hsl(var(--border-color))", display: "flex", alignItems: "center", gap: "8px" }}>
+              <FileText size={16} style={{ color: "var(--text-muted)" }} />
+              <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                <strong>目标配置文件:</strong> <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "2px 6px", borderRadius: "4px" }}>{config.client_id === "claude" ? "~/.claude" : config.client_id === "codex" ? "~/.codex/config.toml" : "~/.config/opencode/opencode.json"}</code>
+              </span>
+            </div>
+
+          </div>
+        </div>
+      ))}
+
+      {/* ── OpenCode 专属渲染（总开关 + 3 个协议子面板）── */}
+      {clientSubTab === "opencode" && (() => {
+        const masterCfg = clientConfigs.find(c => c.client_id === "opencode");
+        const claudeCfg = clientConfigs.find(c => c.client_id === "opencode-claude");
+        const respCfg   = clientConfigs.find(c => c.client_id === "opencode-resp");
+        const chatCfg   = clientConfigs.find(c => c.client_id === "opencode-chat");
+        if (!masterCfg) return null;
+
+        // 通用：供应商列表 + 策略面板渲染函数
+        const renderProviderPanel = (cfg: ClientConfig, label: string, protocol: string, accentColor: string, routeHint: string) => {
+          if (!cfg) return null;
+          return (
+            <div className="panel-card" style={{ marginTop: "16px" }}>
+              <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "12px", marginBottom: "16px" }}>
+                <div>
+                  <h4 style={{ fontSize: "1rem", fontWeight: "700", color: accentColor }}>{label}</h4>
+                  <p style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>代理路由: <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "1px 5px", borderRadius: "3px" }}>http://127.0.0.1:3456{routeHint}</code>　→　此分组的供应商独立路由计划</p>
+                </div>
+              </div>
+
+              {/* 策略 */}
+              <div style={{ marginBottom: "16px" }}>
+                <h5 style={{ fontSize: "0.82rem", fontWeight: "600", marginBottom: "10px" }}>供应商使用策略</h5>
+                <div className="strategy-row">
+                  <div className={`strategy-card ${cfg.strategy === "random" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "random")}>
+                    <h4>🎲 随机切换 (负载均衡)</h4>
+                    <p>根据权重在所有启用供应商中随机分配。</p>
+                  </div>
+                  <div className={`strategy-card ${cfg.strategy === "priority" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "priority")}>
+                    <h4>📶 优先级顺序</h4>
+                    <p>严格按优先级降序，前者失效自动降级。</p>
+                  </div>
+                  <div className={`strategy-card ${cfg.strategy === "manual" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "manual")}>
+                    <h4>📌 手动选择</h4>
+                    <p>固定指定单一供应商，不开启轮换。</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 供应商列表 */}
+              <div>
+                <div className="card-header-row" style={{ marginBottom: "10px" }}>
+                  <h5 style={{ fontSize: "0.82rem", fontWeight: "600" }}>供应商列表及权重分配</h5>
+                  <button className="btn-secondary" style={{ padding: "5px 10px", fontSize: "0.72rem" }} onClick={() => {
+                    setAddingProviderProtocol(protocol);
+                    setAddingProviderForClient(cfg.client_id);
+                  }}><Plus size={13} /> 添加新成员</button>
+                </div>
+                <div className="responsive-table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: "80px" }}>优先级</th>
+                        <th>供应商</th>
+                        <th>运行状态</th>
+                        <th style={{ width: "180px" }}>轮换权重</th>
+                        <th>启用状态</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cfg.providers.map((p, pIndex) => {
+                        const globalProvider = providers.find(gp => gp.id === p.id);
+                        const isGloballyDisabled = globalProvider ? !globalProvider.is_active : false;
+                        return (
+                          <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : {}}>
+                            <td>
+                              <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                                <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === 0 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, -1)}>↑</button>
+                                <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === cfg.providers.length - 1 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, 1)}>↓</button>
+                              </div>
+                            </td>
+                            <td style={{ fontWeight: "600" }}>
+                              {p.name}
+                              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{p.api_url}</div>
+                            </td>
+                            <td>
+                              {isGloballyDisabled ? (
+                                <span className="status-badge" style={{ backgroundColor: "hsl(var(--danger) / 0.15)", color: "hsl(var(--danger))", border: "1px solid hsl(var(--danger) / 0.3)" }}>全局已禁用</span>
+                              ) : (<span className="status-badge success">可用</span>)}
+                            </td>
+                            <td>
+                              <input type="number" min="1" value={p.weight} disabled={isGloballyDisabled}
+                                onChange={(e) => handleWeightChange(cfg.client_id, p.id, Number(e.target.value))}
+                                style={{ width: "70px", padding: "3px 6px", borderRadius: "4px", border: "1px solid hsl(var(--border-color))", backgroundColor: "hsl(var(--bg-card))", color: "hsl(var(--text-primary))", cursor: isGloballyDisabled ? "not-allowed" : "text" }}
+                              />
+                            </td>
+                            <td>
+                              <div className="switch-container" style={{ cursor: isGloballyDisabled ? "not-allowed" : "pointer" }}
+                                onClick={() => {
+                                  if (isGloballyDisabled) {
+                                    showToast(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`, "warning");
+                                    return;
+                                  }
+                                  handleToggleClientProvider(cfg.client_id, p.id);
+                                }}>
+                                <div className={`switch-track ${p.is_active && !isGloballyDisabled ? "active" : ""}`}>
+                                  <div className="switch-thumb"></div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {addingProviderForClient === cfg.client_id && (
+                        <tr>
+                          <td colSpan={2}>
+                            <CustomSelect
+                              value={addingProviderId}
+                              onChange={(v: string) => {
+                                setAddingProviderId(v);
+                                setTimeout(() => {
+                                  if (v) {
+                                    const provider = providers.find(p => p.id === v);
+                                    if (provider) {
+                                      setClientConfigs(prev => prev.map(c => {
+                                        if (c.client_id === cfg.client_id) {
+                                          if (c.providers.some(p => p.id === provider.id)) return c;
+                                          return { ...c, providers: [...c.providers, { ...provider, weight: 1, is_active: true, priority: c.providers.length }] };
+                                        }
+                                        return c;
+                                      }));
+                                      setAddingProviderForClient(null);
+                                      setAddingProviderProtocol("");
+                                      setAddingProviderId("");
+                                    }
+                                  }
+                                }, 0);
+                              }}
+                              options={[
+                                { label: "请选择供应商...", value: "" },
+                                ...providers
+                                  .filter(p => p.protocol === protocol && !cfg.providers.some(cp => cp.id === p.id))
+                                  .map(p => ({ label: p.name, value: p.id }))
+                              ]}
+                            />
+                          </td>
+                          <td>-</td><td>-</td>
+                          <td><button className="btn-secondary" style={{ padding: "3px 7px", fontSize: "0.7rem" }} onClick={() => setAddingProviderForClient(null)}>取消</button></td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 超时/重试 */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginTop: "14px" }}>
+                <div className="form-group">
+                  <label>单点请求超时限制</label>
+                  <CustomSelect value={cfg.timeout_seconds} onChange={(v: string | number) => setClientConfigs(prev => prev.map(c => c.client_id === cfg.client_id ? { ...c, timeout_seconds: Number(v) } : c))}
+                    options={[{ value: 30, label: "30 秒" }, { value: 60, label: "60 秒" }, { value: 120, label: "120 秒" }, { value: 300, label: "300 秒" }]} />
+                </div>
+                <div className="form-group">
+                  <label>首选失败重试上限</label>
+                  <CustomSelect value={cfg.retry_count} onChange={(v: string | number) => setClientConfigs(prev => prev.map(c => c.client_id === cfg.client_id ? { ...c, retry_count: Number(v) } : c))}
+                    options={[{ value: 0, label: "不重试" }, { value: 1, label: "重试 1 次" }, { value: 2, label: "重试 2 次" }, { value: 3, label: "重试 3 次" }]} />
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <div style={{ position: "relative" }}>
+            {renderCliMask("opencode")}
+            {/* 总开关卡片 */}
+            <div className="panel-card">
+              <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "16px" }}>
+                <div>
+                  <h3 style={{ fontSize: "1.2rem" }}>OpenCode 接管代理</h3>
+                  <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>开启后向 <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "1px 5px", borderRadius: "3px" }}>~/.config/opencode/opencode.json</code> 注入 3 个代理供应商，OpenCode 的流量经 OmniGate 转发</p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
+                  <div className="switch-container" onClick={() => handleToggleClient("opencode")}>
+                    <div className={`switch-track ${masterCfg.is_enabled ? "active" : ""}`}>
+                      <div className="switch-thumb"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {/* 注入说明 */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+                {[
+                  { key: "omnigate-claude", npm: "@ai-sdk/anthropic",        route: "/opencode/claude",    color: "hsl(var(--primary))",   label: "Claude 协议" },
+                  { key: "omnigate-resp",   npm: "@ai-sdk/openai",           route: "/opencode/responses", color: "hsl(var(--secondary))", label: "Responses 协议" },
+                  { key: "omnigate-chat",   npm: "@ai-sdk/openai-compatible", route: "/opencode/chat",      color: "hsl(var(--warning))",   label: "Chat 协议" },
+                ].map(item => (
+                  <div key={item.key} style={{ padding: "10px 12px", backgroundColor: "hsl(var(--bg-app))", borderRadius: "7px", border: "1px solid hsl(var(--border-color))" }}>
+                    <div style={{ fontSize: "0.78rem", fontWeight: "700", color: item.color, marginBottom: "4px" }}>{item.key}</div>
+                    <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>{item.npm}</div>
+                    <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "2px" }}>{item.route} → {item.label}供应商</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: "10px", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                💡 配置变更后自动同步更新模型字典，无需手动重新接管
+              </div>
+            </div>
+
+            {/* 3 个独立协议子面板 */}
+            {claudeCfg && renderProviderPanel(claudeCfg, "供应商列表及权重分配（Claude 协议）", "claude", "hsl(var(--primary))", "/opencode/claude")}
+            {respCfg   && renderProviderPanel(respCfg,   "供应商列表及权重分配（Responses 协议）", "codex_responses", "hsl(var(--secondary))", "/opencode/responses")}
+            {chatCfg   && renderProviderPanel(chatCfg,   "供应商列表及权重分配（Chat 协议）", "codex_chat", "hsl(var(--warning))", "/opencode/chat")}
+          </div>
+        );
+      })()}
+
+    </div>
+  );
+}

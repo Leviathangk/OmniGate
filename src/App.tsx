@@ -16,33 +16,36 @@ import {
   Search,
   Plus,
   Check,
-  ChevronRight,
-  Trash2,
   Database,
   Info,
   Terminal,
-  Share2,
   Activity,
-  Sparkles,
   Eye,
-  EyeOff,
+
   Wrench,
   ArrowUpDown,
   Maximize2,
-  X,
   Minus,
   ListPlus,
   RotateCw,
   AlertTriangle,
   FileText,
-  Upload,
-  Download,
-  PackagePlus,
-  PackageCheck
 } from "lucide-react";
 import "./App.css";
-import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+// recharts removed
 import { McpDisplay } from "./components/mcp";
+import { OverviewTab } from "./components/tabs/OverviewTab";
+import { ProvidersTab } from "./components/tabs/ProvidersTab";
+import { ClientConfigTab } from "./components/tabs/ClientConfigTab";
+import { GlobalPromptsTab } from "./components/tabs/GlobalPromptsTab";
+import { SkillsTab } from "./components/tabs/SkillsTab";
+import { SettingsTab } from "./components/tabs/SettingsTab";
+import { ConnectionModal } from "./components/modals/ConnectionModal";
+import { MappingModal } from "./components/modals/MappingModal";
+import { ProviderDetailsModal } from "./components/modals/ProviderDetailsModal";
+import { AddProviderModal } from "./components/modals/AddProviderModal";
+import { PullModal } from "./components/modals/PullModal";
+import { ImportPreviewModal } from "./components/modals/ImportPreviewModal";
 
 // ============================================================================
 // TypeScript 接口定义
@@ -51,7 +54,7 @@ interface TrafficPoint { time: string; count: number; avg_latency: number; error
 interface RecentActivity { id: string; provider_name: string; model_name: string; status_code: number; latency_ms: number; error_message?: string; created_at: number; protocol?: string; }
 interface ModelUsage { name: string; count: number; }
 interface HeatmapData { date: string; count: number; }
-interface Provider {
+export interface Provider {
   id: string;
   name: string;
   api_url: string;
@@ -62,7 +65,7 @@ interface Provider {
   priority: number;
 }
 
-interface Model {
+export interface Model {
   id: string;
   provider_id: string;
   name: string;
@@ -83,7 +86,7 @@ interface Model {
 }
 
 // 导入预览条目（包含「是否已存在」状态）
-interface ImportPreviewItem {
+export interface ImportPreviewItem {
   name: string;
   api_url: string;
   api_key: string;
@@ -117,7 +120,7 @@ interface McpServer {
   is_active: boolean;
 }
 
-interface Skill {
+export interface Skill {
   id: string;
   name: string;
   description: string;
@@ -149,7 +152,7 @@ interface RecentActivity {
   icon_type: string;
 }
 
-interface ClientConfig {
+export interface ClientConfig {
   client_id: string;
   is_enabled: boolean;
   strategy: string;
@@ -159,7 +162,7 @@ interface ClientConfig {
 }
 
 
-const getUrlPreview = (url: string, protocol: string) => {
+export const getUrlPreview = (url: string, protocol: string) => {
   if (!url.trim()) return { discover: "-", forward: "-" };
   const trimmed = url.trim().replace(/\/+$/, ""); // 去除末尾斜杠
   
@@ -190,7 +193,7 @@ interface SelectOption {
   label: string;
 }
 
-interface CustomSelectProps {
+export interface CustomSelectProps {
   value: string | number;
   options: SelectOption[];
   onChange: (value: any) => void;
@@ -198,7 +201,7 @@ interface CustomSelectProps {
   width?: string | number;
 }
 
-const CustomSelect: React.FC<CustomSelectProps> = ({ value, options, onChange, style, width = "100%" }) => {
+export const CustomSelect: React.FC<CustomSelectProps> = ({ value, options, onChange, style, width = "100%" }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
@@ -359,7 +362,7 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, options, onChange, s
   );
 };
 
-const renderModelPullingInterface = (
+export const renderModelPullingInterface = (
   modelsList: Model[],
   searchQ: string,
   setSearchQ: (q: string) => void,
@@ -624,20 +627,7 @@ const renderModelPullingInterface = (
 };
 
 
-const CustomTrafficTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    return (
-      <div style={{ backgroundColor: 'hsl(var(--bg-card))', border: '1px solid hsl(var(--border-color))', borderRadius: '8px', padding: '10px', fontSize: '0.8rem', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-        <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: 'hsl(var(--text-primary))' }}>{label}</p>
-        <p style={{ margin: '4px 0', color: '#10b981' }}>请求总数: <strong>{data.count}</strong></p>
-        <p style={{ margin: '4px 0', color: '#ef4444' }}>失败数: <strong>{data.error_count}</strong></p>
-        <p style={{ margin: '4px 0', color: 'hsl(var(--text-secondary))' }}>平均延迟: <strong>{Math.round(data.avg_latency)} ms</strong></p>
-      </div>
-    );
-  }
-  return null;
-};
+// CustomTrafficTooltip removed
 
 function App() {
   // ============================================================================
@@ -1820,948 +1810,99 @@ function App() {
               TAB: OVERVIEW (概览)
              ============================================================================ */}
           {activeTab === "overview" && (
-            <div>
-              <div className="card-grid-4">
-                <div className="stat-card purple">
-                  <div className="stat-icon-container"><Server size={20} /></div>
-                  <div className="stat-info">
-                    <p>已接管供应商</p>
-                    <h3>{overviewData.total_providers} 个</h3>
-                    <div className="stat-sub">当前启用: <strong>{overviewData.active_providers} 个</strong></div>
-                  </div>
-                </div>
-                <div className="stat-card blue">
-                  <div className="stat-icon-container"><Cpu size={20} /></div>
-                  <div className="stat-info">
-                    <p>总模型矩阵</p>
-                    <h3>{overviewData.total_models} 个</h3>
-                    <div className="stat-sub">轮换可用: <strong>{overviewData.active_models} 个</strong></div>
-                  </div>
-                </div>
-                <div className="stat-card green">
-                  <div className="stat-icon-container"><Brain size={20} /></div>
-                  <div className="stat-info">
-                    <p>Skill 技能数</p>
-                    <h3>{overviewData.total_skills} 个</h3>
-                    <div className="stat-sub">已启用: <strong>{overviewData.active_skills} 个</strong></div>
-                  </div>
-                </div>
-                <div className="stat-card orange">
-                  <div className="stat-icon-container"><Boxes size={20} /></div>
-                  <div className="stat-info">
-                    <p>MCP 服务端</p>
-                    <h3>{overviewData.total_mcp} 个</h3>
-                    <div className="stat-sub">已连接: <strong>{overviewData.active_mcp} 个</strong></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="dashboard-grid">
-                <div className="left-column">
-                  <div className="panel-card">
-                    <div className="card-header-row">
-                      <h3>今日流量走势</h3>
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <span className="status-badge success" style={{ fontSize: "0.7rem", padding: "2px 8px" }}>实时更新</span>
-                      </div>
-                    </div>
-                    <div style={{ width: '100%', height: '250px', marginTop: '20px' }}>
-                      {trafficTrend.length === 0 ? (
-                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.8rem", height: "100%" }}>
-                            <span>暂无流量走势数据</span>
-                         </div>
-                      ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={trafficTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <defs>
-                              <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                              </linearGradient>
-                            </defs>
-                            <XAxis dataKey="time" stroke="hsl(var(--text-muted))" fontSize={12} tickLine={false} axisLine={false} />
-                            <YAxis stroke="hsl(var(--text-muted))" fontSize={12} tickLine={false} axisLine={false} />
-                            <RechartsTooltip content={<CustomTrafficTooltip />} />
-                            <Area type="monotone" dataKey="count" stroke="#10b981" fillOpacity={1} fill="url(#colorCount)" />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="panel-card">
-                    <div className="card-header-row">
-                      <h3>最近转发活动</h3>
-                    </div>
-                    <div className="table-container" style={{ marginTop: '16px' }}>
-                      <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '1px solid hsl(var(--border-color))', color: 'hsl(var(--text-muted))' }}>
-                            <th style={{ padding: '8px', width: '80px' }}>来源</th>
-                            <th style={{ padding: '8px' }}>状态</th>
-                            <th style={{ padding: '8px' }}>模型</th>
-                            <th style={{ padding: '8px' }}>供应商</th>
-                            <th style={{ padding: '8px' }}>延迟</th>
-                            <th style={{ padding: '8px', whiteSpace: 'nowrap' }}>发出时间</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {recentActivities.map((act, i) => (
-                            <tr key={i} style={{ borderBottom: '1px solid hsl(var(--border-color))' }}>
-                              <td style={{ padding: '8px' }}>
-                                {act.protocol === 'claude' && <span title="Claude" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(168, 85, 247, 0.1)', color: '#a855f7', fontSize: '0.7rem', fontWeight: 'bold' }}>Claude</span>}
-                                {act.protocol === 'codex_responses' && <span title="Codex" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', fontSize: '0.7rem', fontWeight: 'bold' }}>Codex</span>}
-                                {act.protocol === 'codex_chat' && <span title="OpenCode" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', fontSize: '0.7rem', fontWeight: 'bold' }}>OpenCode</span>}
-                                {(!act.protocol) && <span style={{ color: 'hsl(var(--text-muted))' }}>-</span>}
-                              </td>
-                              <td style={{ padding: '8px' }}>
-                                <span className={`status-badge ${act.status_code === 200 ? 'success' : 'error'}`} style={{ fontSize: '0.7rem' }}>
-                                  {act.status_code}
-                                </span>
-                              </td>
-                              <td style={{ padding: '8px', color: 'hsl(var(--text-primary))' }}>{act.model_name}</td>
-                              <td style={{ padding: '8px', color: 'hsl(var(--text-secondary))' }}>{act.provider_name}</td>
-                              <td style={{ padding: '8px', fontFamily: 'monospace' }}>{act.latency_ms}ms</td>
-                              <td style={{ padding: '8px', color: 'hsl(var(--text-secondary))', fontSize: '0.8rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                                {(() => {
-                                  const d = new Date(act.created_at * 1000);
-                                  const pad = (n: number) => n.toString().padStart(2, '0');
-                                  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-                                })()}
-                              </td>
-                            </tr>
-                          ))}
-                          {recentActivities.length === 0 && (
-                            <tr><td colSpan={6} style={{ padding: '20px', textAlign: 'center', color: 'hsl(var(--text-muted))' }}>暂无请求记录</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="right-column">
-                  <div className="panel-card">
-                    <div className="card-header-row">
-                      <h3>使用分布 (按模型)</h3>
-                    </div>
-                    <div style={{ width: '100%', height: '220px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                      {modelUsage.length === 0 ? (
-                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                            <span>暂无使用分布数据</span>
-                         </div>
-                      ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={modelUsage}
-                              innerRadius={60}
-                              outerRadius={80}
-                              paddingAngle={5}
-                              dataKey="count"
-                              nameKey="name"
-                            >
-                              {modelUsage.map((_entry, index) => {
-                                const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-                                return <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />;
-                              })}
-                            </Pie>
-                            <RechartsTooltip 
-                              contentStyle={{ backgroundColor: 'hsl(var(--bg-card))', borderColor: 'hsl(var(--border-color))', borderRadius: '8px', color: 'hsl(var(--text-primary))' }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      )}
-                    </div>
-                    {/* Legend */}
-                    {modelUsage.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center', marginTop: '10px' }}>
-                        {modelUsage.map((m, i) => {
-                          const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-                          return (
-                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'hsl(var(--text-secondary))' }}>
-                              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: COLORS[i % COLORS.length] }}></div>
-                              {m.name} ({m.count})
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  
-                  
-                  <div className="panel-card">
-                    <div className="card-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <h3>请求趋势</h3>
-                      <div style={{ display: 'flex', background: 'hsl(var(--border-card))', padding: '3px', borderRadius: '8px', border: '1px solid hsl(var(--border-color))' }}>
-                        {[7, 15, 30].map(days => (
-                          <button
-                            key={days}
-                            onClick={() => setStatsPeriod(days)}
-                            style={{
-                              background: statsPeriod === days ? 'hsl(var(--bg-card))' : 'transparent',
-                              color: statsPeriod === days ? 'hsl(var(--text-primary))' : 'hsl(var(--text-muted))',
-                              border: 'none',
-                              padding: '4px 12px',
-                              borderRadius: '6px',
-                              fontSize: '0.75rem',
-                              cursor: 'pointer',
-                              fontWeight: statsPeriod === days ? '600' : 'normal',
-                              transition: 'all 0.2s ease',
-                              boxShadow: statsPeriod === days ? 'var(--card-shadow)' : 'none'
-                            }}
-                          >
-                            近 {days} 天
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div style={{ marginTop: '20px', height: '220px', width: '100%' }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart
-                          data={Array.from({ length: statsPeriod }).map((_, i) => {
-                            const d = new Date();
-                            d.setDate(d.getDate() - (statsPeriod - 1) + i);
-                            const dateStr = d.toISOString().split('T')[0];
-                            const found = heatmapData.find(item => item.date === dateStr);
-                            return { date: dateStr.slice(5), count: found ? found.count : 0 };
-                          })}
-                          margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                        >
-                          <defs>
-                            <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
-                              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.0}/>
-                            </linearGradient>
-                          </defs>
-                          <XAxis dataKey="date" stroke="hsl(var(--text-muted))" fontSize={12} tickLine={false} axisLine={false} />
-                          <YAxis stroke="hsl(var(--text-muted))" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-                          <RechartsTooltip 
-                            contentStyle={{ backgroundColor: 'hsl(var(--bg-card))', border: '1px solid hsl(var(--border-color))', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
-                            itemStyle={{ color: 'hsl(var(--text-primary))' }}
-                            labelStyle={{ color: 'hsl(var(--text-secondary))', marginBottom: '4px' }}
-                            cursor={{ stroke: 'hsl(var(--border-color))', strokeWidth: 1, strokeDasharray: '4 4' }}
-                          />
-                          <Area type="monotone" dataKey="count" name="请求次数" stroke="hsl(var(--primary))" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" activeDot={{ r: 6, fill: 'hsl(var(--primary))', stroke: '#fff', strokeWidth: 2 }} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-</div>
+            <OverviewTab
+              overviewData={overviewData}
+              trafficTrend={trafficTrend}
+              recentActivities={recentActivities}
+              modelUsage={modelUsage}
+              statsPeriod={statsPeriod}
+              setStatsPeriod={setStatsPeriod}
+              heatmapData={heatmapData}
+            />
           )}
 
           {/* ============================================================================
               TAB: PROVIDERS (供应商管理)
              ============================================================================ */}
           {activeTab === "providers" && (
-            <div className="panel-card">
-              <div className="card-header-row">
-                <h3>已接管的 AI 供应商列表</h3>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <button className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem" }}
-                    onClick={() => importFileInputRef.current?.click()}>
-                    <Download size={14} /> 导入
-                  </button>
-                  <input ref={importFileInputRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleImportFileChange} />
-                  <button className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem" }}
-                    onClick={handleExportProviders} disabled={isExporting}>
-                    <Upload size={14} /> {isExporting ? "导出中..." : "导出"}
-                  </button>
-                  <button className="btn-primary" onClick={() => { setShowAddProviderModal(true); setWizardStep(1); }}><Plus size={16} /> 添加新供应商</button>
-                </div>
-              </div>
-
-              <div className="responsive-table-container">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>供应商名称</th>
-                      <th>API 基础 URL</th>
-                      <th>协议类型</th>
-                      <th>启用状态</th>
-                      <th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {providers.length === 0 ? (
-                      <tr><td colSpan={5} style={{ textAlign: "center", padding: "32px", color: "var(--text-muted)", fontSize: "0.82rem" }}>暂无供应商 — 点击右上角 + 按钮添加</td></tr>
-                    ) : providers.map(p => (
-                      <tr key={p.id}>
-                        <td style={{ fontWeight: "600" }}>{p.name}</td>
-                        <td><code style={{ fontSize: "0.76rem" }}>{p.api_url}</code></td>
-                        <td>
-                          <span className="status-badge secondary">
-                            {p.protocol === "claude" && "Claude 协议"}
-                            {p.protocol === "codex_responses" && "Codex /responses"}
-                            {p.protocol === "codex_chat" && "Codex /chat"}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="switch-container" onClick={() => handleToggleProvider(p)}>
-                            <div className={`switch-track ${p.is_active ? "active" : ""}`}>
-                              <div className="switch-thumb"></div>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", marginRight: "8px" }} onClick={() => handleOpenProviderConnection(p)}>连接配置</button>
-                          <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", marginRight: "8px" }} onClick={() => handleOpenProviderDetails(p)}>模型信息</button>
-                          {p.protocol === "claude" && (
-                            <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", marginRight: "8px" }} onClick={() => handleOpenModelMapping(p)}>模型映射</button>
-                          )}
-                          <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", color: "hsl(var(--danger))", borderColor: "hsl(var(--danger) / 0.2)" }} onClick={() => handleDeleteProvider(p.id)}><Trash2 size={12} /></button>
-                        </td>
-                      </tr>
-                    ))}
-
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <ProvidersTab
+              importFileInputRef={importFileInputRef}
+              handleImportFileChange={handleImportFileChange}
+              handleExportProviders={handleExportProviders}
+              isExporting={isExporting}
+              setShowAddProviderModal={setShowAddProviderModal}
+              setWizardStep={setWizardStep}
+              providers={providers}
+              handleToggleProvider={handleToggleProvider}
+              handleOpenProviderConnection={handleOpenProviderConnection}
+              handleOpenProviderDetails={handleOpenProviderDetails}
+              handleOpenModelMapping={handleOpenModelMapping}
+              handleDeleteProvider={handleDeleteProvider}
+            />
           )}
 
           {/* ============================================================================
               TAB: CLIENT CONFIG (客户端配置)
              ============================================================================ */}
           {activeTab === "client_config" && (
-            <div>
-              <div className="tabs-control-row">
-                <button className={`tab-select-btn ${clientSubTab === "claude" ? "active" : ""}`} onClick={() => setClientSubTab("claude")}>Claude 客户端配置</button>
-                <button className={`tab-select-btn ${clientSubTab === "codex" ? "active" : ""}`} onClick={() => setClientSubTab("codex")}>Codex 客户端配置</button>
-                <button className={`tab-select-btn ${clientSubTab === "opencode" ? "active" : ""}`} onClick={() => setClientSubTab("opencode")}>OpenCode 客户端配置</button>
-              </div>
-
-              {/* ── Claude / Codex 通用渲染（过滤掉 opencode-* 子 ID）──  */}
-              {clientSubTab !== "opencode" && clientConfigs.filter(c => c.client_id === clientSubTab).map((config, index) => (
-                <div className="panel-card" key={index} style={{ position: "relative" }}>
-                  {renderCliMask(config.client_id)}
-                  <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "20px" }}>
-                    <div>
-                      <h3 style={{ textTransform: "capitalize", fontSize: "1.2rem" }}>{config.client_id} 接管代理</h3>
-                      <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>开启后本地客户端的流量将会经过 OmniGate 分流轮换</p>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
-                      <div className="switch-container" onClick={() => handleToggleClient(config.client_id)}>
-                        <div className={`switch-track ${config.is_enabled ? "active" : ""}`}>
-                          <div className="switch-thumb"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="priority-config-container">
-                    <div>
-                      <h4 style={{ fontSize: "0.88rem", fontWeight: "600", marginBottom: "12px" }}>供应商使用策略</h4>
-                      <div className="strategy-row">
-                        <div className={`strategy-card ${config.strategy === "random" ? "active" : ""}`} onClick={() => handleStrategyChange(config.client_id, "random")}>
-                          <h4>🎲 随机切换 (负载均衡)</h4>
-                          <p>根据设置的权重在所有启用的供应商中进行分配，实现最优防风控策略。</p>
-                        </div>
-                        <div className={`strategy-card ${config.strategy === "priority" ? "active" : ""}`} onClick={() => handleStrategyChange(config.client_id, "priority")}>
-                          <h4>📶 优先级顺序</h4>
-                          <p>严格按照优先级降序（权重顺序）发起请求，当前首选失效时自动启用降级供应商。</p>
-                        </div>
-                        <div className={`strategy-card ${config.strategy === "manual" ? "active" : ""}`} onClick={() => handleStrategyChange(config.client_id, "manual")}>
-                          <h4>📌 手动选择</h4>
-                          <p>固定指定某一个特定账号作为唯一转发终点，不开启轮换模式。</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="card-header-row" style={{ marginBottom: "10px" }}>
-                        <h4 style={{ fontSize: "0.88rem", fontWeight: "600" }}>供应商列表及权重分配</h4>
-                        <button className="btn-secondary" style={{ padding: "6px 12px", fontSize: "0.76rem" }} onClick={() => setAddingProviderForClient(config.client_id)}><Plus size={14} /> 添加新成员</button>
-                      </div>
-
-                      <div className="responsive-table-container">
-                        <table className="data-table">
-                          <thead>
-                            <tr>
-                              <th style={{ width: "80px" }}>优先级</th>
-                              <th>供应商</th>
-                              <th>运行状态</th>
-                              <th style={{ width: "200px" }}>轮换权重 (Weight)</th>
-                              <th>启用状态</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {config.providers.map((p, pIndex) => {
-                              // 查询全局供应商表，判断该供应商是否已被全局禁用
-                              const globalProvider = providers.find(gp => gp.id === p.id);
-                              const isGloballyDisabled = globalProvider ? !globalProvider.is_active : false;
-
-                              return (
-                                <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : {}}>
-                                  <td>
-                                    <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                                      <button
-                                        className="btn-secondary"
-                                        style={{ padding: "2px 4px", fontSize: "0.6rem" }}
-                                        disabled={pIndex === 0 || isGloballyDisabled}
-                                        onClick={() => handleMoveProvider(config.client_id, pIndex, -1)}
-                                      >↑</button>
-                                      <button
-                                        className="btn-secondary"
-                                        style={{ padding: "2px 4px", fontSize: "0.6rem" }}
-                                        disabled={pIndex === config.providers.length - 1 || isGloballyDisabled}
-                                        onClick={() => handleMoveProvider(config.client_id, pIndex, 1)}
-                                      >↓</button>
-                                    </div>
-                                  </td>
-                                  <td style={{ fontWeight: "600" }}>
-                                    {p.name}
-                                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{p.api_url}</div>
-                                  </td>
-                                  <td>
-                                    {isGloballyDisabled ? (
-                                      <span className="status-badge" style={{ backgroundColor: "hsl(var(--danger) / 0.15)", color: "hsl(var(--danger))", border: "1px solid hsl(var(--danger) / 0.3)" }}>
-                                        全局已禁用
-                                      </span>
-                                    ) : (
-                                      <span className="status-badge success">可用</span>
-                                    )}
-                                  </td>
-                                  <td>
-                                    <input
-                                      type="number"
-                                      min="1"
-                                      value={p.weight}
-                                      disabled={isGloballyDisabled}
-                                      onChange={(e) => handleWeightChange(config.client_id, p.id, Number(e.target.value))}
-                                      style={{
-                                        width: "80px", padding: "4px 8px", borderRadius: "4px",
-                                        border: "1px solid hsl(var(--border-color))",
-                                        backgroundColor: "hsl(var(--bg-card))",
-                                        color: "hsl(var(--text-primary))",
-                                        cursor: isGloballyDisabled ? "not-allowed" : "text"
-                                      }}
-                                    />
-                                  </td>
-                                  <td>
-                                    <div
-                                      className="switch-container"
-                                      style={{ cursor: isGloballyDisabled ? "not-allowed" : "pointer" }}
-                                      onClick={() => {
-                                        if (isGloballyDisabled) {
-                                          showToast(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`, "warning");
-                                          return;
-                                        }
-                                        handleToggleClientProvider(config.client_id, p.id);
-                                      }}
-                                    >
-                                      <div className={`switch-track ${p.is_active && !isGloballyDisabled ? "active" : ""}`}>
-                                        <div className="switch-thumb"></div>
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                            {addingProviderForClient === config.client_id && (
-                              <tr>
-                                <td colSpan={2}>
-                                  <div style={{ display: "flex", gap: "10px", width: "100%" }}>
-                                    <div style={{ flex: "0 0 160px" }}>
-                                      <CustomSelect
-                                        value={addingProviderProtocol}
-                                        onChange={(v) => {
-                                          setAddingProviderProtocol(v);
-                                          setAddingProviderId("");
-                                        }}
-                                        options={[
-                                          { label: "选择协议", value: "" },
-                                          ...(config.client_id === "claude" ? [{ label: "Claude 协议", value: "claude" }] : []),
-                                          ...(config.client_id === "codex" ? [{ label: "Codex /responses", value: "codex_responses" }] : []),
-                                          ...(config.client_id === "opencode" ? [
-                                            { label: "Claude 协议", value: "claude" },
-                                            { label: "Codex /responses", value: "codex_responses" },
-                                            { label: "Codex /chat", value: "codex_chat" }
-                                          ] : [])
-                                        ]}
-                                      />
-                                    </div>
-                                    <div style={{ flex: "1" }}>
-                                      <CustomSelect
-                                        value={addingProviderId}
-                                        onChange={(v) => {
-                                          setAddingProviderId(v);
-                                          // 延迟执行添加，因为 setState 是异步的
-                                          setTimeout(() => {
-                                            if (v) {
-                                              const provider = providers.find(p => p.id === v);
-                                              if (provider) {
-                                                setClientConfigs(prev => prev.map(c => {
-                                                  if (c.client_id === config.client_id) {
-                                                    if (c.providers.some(p => p.id === provider.id)) return c;
-                                                    return { ...c, providers: [...c.providers, { ...provider, weight: 1, is_active: true, sort_order: c.providers.length }] };
-                                                  }
-                                                  return c;
-                                                }));
-                                                setAddingProviderForClient(null);
-                                                setAddingProviderProtocol("");
-                                                setAddingProviderId("");
-                                              }
-                                            }
-                                          }, 0);
-                                        }}
-                                        options={[
-                                          { label: "请选择供应商...", value: "" },
-                                          ...providers
-                                            .filter(p => p.protocol === addingProviderProtocol && !config.providers.some(cp => cp.id === p.id))
-                                            .map(p => ({ label: p.name, value: p.id }))
-                                        ]}
-                                      />
-                                    </div>
-                                  </div>
-                                </td>
-                                <td>-</td>
-                                <td>-</td>
-                                <td>
-                                  <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem" }} onClick={() => setAddingProviderForClient(null)}>取消</button>
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
-                      <div className="form-group">
-                        <label>单点请求超时限制</label>
-                        <CustomSelect 
-                          value={config.timeout_seconds} 
-                          onChange={(v) => {
-                            const newTimeout = Number(v);
-                            setClientConfigs(prev => prev.map(c => c.client_id === config.client_id ? { ...c, timeout_seconds: newTimeout } : c));
-                          }}
-                          options={[
-                            { value: 30, label: "30 秒" },
-                            { value: 60, label: "60 秒" },
-                            { value: 120, label: "120 秒" },
-                            { value: 300, label: "300 秒" }
-                          ]}
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>首选失败重试上限</label>
-                        <CustomSelect 
-                          value={config.retry_count} 
-                          onChange={(v) => {
-                            const newRetry = Number(v);
-                            setClientConfigs(prev => prev.map(c => c.client_id === config.client_id ? { ...c, retry_count: newRetry } : c));
-                          }}
-                          options={[
-                            { value: 0, label: "不重试" },
-                            { value: 1, label: "重试 1 次" },
-                            { value: 2, label: "重试 2 次" },
-                            { value: 3, label: "重试 3 次" }
-                          ]}
-                        />
-                      </div>
-                      
-                      {config.client_id === "codex" && (
-                        <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-                          <label style={{ display: "flex", justifyContent: "space-between" }}>
-                            <span>Provider 名称 (model_provider)</span>
-                            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>自动读取: {hijackProviderName || "无"}</span>
-                          </label>
-                          <input 
-                            type="text" 
-                            className="modal-input" 
-                            value={hijackProviderName} 
-                            onChange={e => {
-                              setHijackProviderName(e.target.value);
-                              if (config.is_enabled) {
-                                showToast("修改 Provider 名称后，必须重新关闭并开启上方「接管状态」才能在本地文件中生效！", "warning");
-                              }
-                            }} 
-                            placeholder="custom" 
-                          />
-                          <div style={{ marginTop: "8px", padding: "8px 12px", backgroundColor: "hsl(var(--warning) / 0.1)", border: "1px solid hsl(var(--warning) / 0.3)", borderRadius: "6px" }}>
-                            <span style={{ fontSize: "0.8rem", color: "hsl(var(--warning))", display: "flex", alignItems: "center", gap: "6px" }}>
-                              <AlertTriangle size={14} /> <strong>警告：</strong>修改该项可能导致 Codex 历史会话丢失，强烈不建议修改。
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {config.client_id === "opencode" && (
-                        <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-                          <div style={{ padding: "12px 14px", backgroundColor: "hsl(var(--primary) / 0.06)", border: "1px solid hsl(var(--primary) / 0.2)", borderRadius: "8px" }}>
-                            <div style={{ fontSize: "0.82rem", color: "hsl(var(--primary))", fontWeight: "600", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
-                              <FileText size={14} /> 接管后自动注入 3 个代理供应商
-                            </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
-                              <div style={{ padding: "8px 10px", backgroundColor: "hsl(var(--bg-card))", borderRadius: "6px", border: "1px solid hsl(var(--border-color))" }}>
-                                <div style={{ fontSize: "0.75rem", fontWeight: "700", color: "hsl(var(--primary))", marginBottom: "4px" }}>omnigate-claude</div>
-                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: "1.4" }}>@ai-sdk/anthropic</div>
-                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/claude/v1 → Claude 协议供应商模型</div>
-                              </div>
-                              <div style={{ padding: "8px 10px", backgroundColor: "hsl(var(--bg-card))", borderRadius: "6px", border: "1px solid hsl(var(--border-color))" }}>
-                                <div style={{ fontSize: "0.75rem", fontWeight: "700", color: "hsl(var(--secondary))", marginBottom: "4px" }}>omnigate-resp</div>
-                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: "1.4" }}>@ai-sdk/openai</div>
-                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/codex → Responses 协议供应商模型</div>
-                              </div>
-                              <div style={{ padding: "8px 10px", backgroundColor: "hsl(var(--bg-card))", borderRadius: "6px", border: "1px solid hsl(var(--border-color))" }}>
-                                <div style={{ fontSize: "0.75rem", fontWeight: "700", color: "hsl(var(--warning))", marginBottom: "4px" }}>omnigate-chat</div>
-                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: "1.4" }}>@ai-sdk/openai-compatible</div>
-                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/opencode/v1 → Chat 协议供应商模型</div>
-                              </div>
-                            </div>
-                            <div style={{ marginTop: "8px", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                              💡 配置变更后自动同步更新模型字典，无需手动重新接管
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid hsl(var(--border-color))", display: "flex", alignItems: "center", gap: "8px" }}>
-                      <FileText size={16} style={{ color: "var(--text-muted)" }} />
-                      <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                        <strong>目标配置文件:</strong> <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "2px 6px", borderRadius: "4px" }}>{config.client_id === "claude" ? "~/.claude" : config.client_id === "codex" ? "~/.codex/config.toml" : "~/.config/opencode/opencode.json"}</code>
-                      </span>
-                    </div>
-
-                  </div>
-                </div>
-              ))}
-
-              {/* ── OpenCode 专属渲染（总开关 + 3 个协议子面板）── */}
-              {clientSubTab === "opencode" && (() => {
-                const masterCfg = clientConfigs.find(c => c.client_id === "opencode");
-                const claudeCfg = clientConfigs.find(c => c.client_id === "opencode-claude");
-                const respCfg   = clientConfigs.find(c => c.client_id === "opencode-resp");
-                const chatCfg   = clientConfigs.find(c => c.client_id === "opencode-chat");
-                if (!masterCfg) return null;
-
-                // 通用：供应商列表 + 策略面板渲染函数
-                const renderProviderPanel = (cfg: ClientConfig, label: string, protocol: string, accentColor: string, routeHint: string) => {
-                  if (!cfg) return null;
-                  return (
-                    <div className="panel-card" style={{ marginTop: "16px" }}>
-                      <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "12px", marginBottom: "16px" }}>
-                        <div>
-                          <h4 style={{ fontSize: "1rem", fontWeight: "700", color: accentColor }}>{label}</h4>
-                          <p style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>代理路由: <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "1px 5px", borderRadius: "3px" }}>http://127.0.0.1:3456{routeHint}</code>　→　此分组的供应商独立路由计划</p>
-                        </div>
-                      </div>
-
-                      {/* 策略 */}
-                      <div style={{ marginBottom: "16px" }}>
-                        <h5 style={{ fontSize: "0.82rem", fontWeight: "600", marginBottom: "10px" }}>供应商使用策略</h5>
-                        <div className="strategy-row">
-                          <div className={`strategy-card ${cfg.strategy === "random" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "random")}>
-                            <h4>🎲 随机切换 (负载均衡)</h4>
-                            <p>根据权重在所有启用供应商中随机分配。</p>
-                          </div>
-                          <div className={`strategy-card ${cfg.strategy === "priority" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "priority")}>
-                            <h4>📶 优先级顺序</h4>
-                            <p>严格按优先级降序，前者失效自动降级。</p>
-                          </div>
-                          <div className={`strategy-card ${cfg.strategy === "manual" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "manual")}>
-                            <h4>📌 手动选择</h4>
-                            <p>固定指定单一供应商，不开启轮换。</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 供应商列表 */}
-                      <div>
-                        <div className="card-header-row" style={{ marginBottom: "10px" }}>
-                          <h5 style={{ fontSize: "0.82rem", fontWeight: "600" }}>供应商列表及权重分配</h5>
-                          <button className="btn-secondary" style={{ padding: "5px 10px", fontSize: "0.72rem" }} onClick={() => {
-                            setAddingProviderProtocol(protocol);
-                            setAddingProviderForClient(cfg.client_id);
-                          }}><Plus size={13} /> 添加新成员</button>
-                        </div>
-                        <div className="responsive-table-container">
-                          <table className="data-table">
-                            <thead>
-                              <tr>
-                                <th style={{ width: "80px" }}>优先级</th>
-                                <th>供应商</th>
-                                <th>运行状态</th>
-                                <th style={{ width: "180px" }}>轮换权重</th>
-                                <th>启用状态</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {cfg.providers.map((p, pIndex) => {
-                                const globalProvider = providers.find(gp => gp.id === p.id);
-                                const isGloballyDisabled = globalProvider ? !globalProvider.is_active : false;
-                                return (
-                                  <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : {}}>
-                                    <td>
-                                      <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                                        <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === 0 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, -1)}>↑</button>
-                                        <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === cfg.providers.length - 1 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, 1)}>↓</button>
-                                      </div>
-                                    </td>
-                                    <td style={{ fontWeight: "600" }}>
-                                      {p.name}
-                                      <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{p.api_url}</div>
-                                    </td>
-                                    <td>
-                                      {isGloballyDisabled ? (
-                                        <span className="status-badge" style={{ backgroundColor: "hsl(var(--danger) / 0.15)", color: "hsl(var(--danger))", border: "1px solid hsl(var(--danger) / 0.3)" }}>全局已禁用</span>
-                                      ) : (<span className="status-badge success">可用</span>)}
-                                    </td>
-                                    <td>
-                                      <input type="number" min="1" value={p.weight} disabled={isGloballyDisabled}
-                                        onChange={(e) => handleWeightChange(cfg.client_id, p.id, Number(e.target.value))}
-                                        style={{ width: "70px", padding: "3px 6px", borderRadius: "4px", border: "1px solid hsl(var(--border-color))", backgroundColor: "hsl(var(--bg-card))", color: "hsl(var(--text-primary))", cursor: isGloballyDisabled ? "not-allowed" : "text" }}
-                                      />
-                                    </td>
-                                    <td>
-                                      <div className="switch-container" style={{ cursor: isGloballyDisabled ? "not-allowed" : "pointer" }}
-                                        onClick={() => {
-                                          if (isGloballyDisabled) {
-                                            showToast(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`, "warning");
-                                            return;
-                                          }
-                                          handleToggleClientProvider(cfg.client_id, p.id);
-                                        }}>
-                                        <div className={`switch-track ${p.is_active && !isGloballyDisabled ? "active" : ""}`}>
-                                          <div className="switch-thumb"></div>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                              {addingProviderForClient === cfg.client_id && (
-                                <tr>
-                                  <td colSpan={2}>
-                                    <CustomSelect
-                                      value={addingProviderId}
-                                      onChange={(v) => {
-                                        setAddingProviderId(v);
-                                        setTimeout(() => {
-                                          if (v) {
-                                            const provider = providers.find(p => p.id === v);
-                                            if (provider) {
-                                              setClientConfigs(prev => prev.map(c => {
-                                                if (c.client_id === cfg.client_id) {
-                                                  if (c.providers.some(p => p.id === provider.id)) return c;
-                                                  return { ...c, providers: [...c.providers, { ...provider, weight: 1, is_active: true, sort_order: c.providers.length }] };
-                                                }
-                                                return c;
-                                              }));
-                                              setAddingProviderForClient(null);
-                                              setAddingProviderProtocol("");
-                                              setAddingProviderId("");
-                                            }
-                                          }
-                                        }, 0);
-                                      }}
-                                      options={[
-                                        { label: "请选择供应商...", value: "" },
-                                        ...providers
-                                          .filter(p => p.protocol === protocol && !cfg.providers.some(cp => cp.id === p.id))
-                                          .map(p => ({ label: p.name, value: p.id }))
-                                      ]}
-                                    />
-                                  </td>
-                                  <td>-</td><td>-</td>
-                                  <td><button className="btn-secondary" style={{ padding: "3px 7px", fontSize: "0.7rem" }} onClick={() => setAddingProviderForClient(null)}>取消</button></td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
-                      {/* 超时/重试 */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginTop: "14px" }}>
-                        <div className="form-group">
-                          <label>单点请求超时限制</label>
-                          <CustomSelect value={cfg.timeout_seconds} onChange={(v) => setClientConfigs(prev => prev.map(c => c.client_id === cfg.client_id ? { ...c, timeout_seconds: Number(v) } : c))}
-                            options={[{ value: 30, label: "30 秒" }, { value: 60, label: "60 秒" }, { value: 120, label: "120 秒" }, { value: 300, label: "300 秒" }]} />
-                        </div>
-                        <div className="form-group">
-                          <label>首选失败重试上限</label>
-                          <CustomSelect value={cfg.retry_count} onChange={(v) => setClientConfigs(prev => prev.map(c => c.client_id === cfg.client_id ? { ...c, retry_count: Number(v) } : c))}
-                            options={[{ value: 0, label: "不重试" }, { value: 1, label: "重试 1 次" }, { value: 2, label: "重试 2 次" }, { value: 3, label: "重试 3 次" }]} />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                };
-
-                return (
-                  <div style={{ position: "relative" }}>
-                    {renderCliMask("opencode")}
-                    {/* 总开关卡片 */}
-                    <div className="panel-card">
-                      <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "16px" }}>
-                        <div>
-                          <h3 style={{ fontSize: "1.2rem" }}>OpenCode 接管代理</h3>
-                          <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>开启后向 <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "1px 5px", borderRadius: "3px" }}>~/.config/opencode/opencode.json</code> 注入 3 个代理供应商，OpenCode 的流量经 OmniGate 转发</p>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                          <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
-                          <div className="switch-container" onClick={() => handleToggleClient("opencode")}>
-                            <div className={`switch-track ${masterCfg.is_enabled ? "active" : ""}`}>
-                              <div className="switch-thumb"></div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      {/* 注入说明 */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
-                        {[
-                          { key: "omnigate-claude", npm: "@ai-sdk/anthropic",        route: "/opencode/claude",    color: "hsl(var(--primary))",   label: "Claude 协议" },
-                          { key: "omnigate-resp",   npm: "@ai-sdk/openai",           route: "/opencode/responses", color: "hsl(var(--secondary))", label: "Responses 协议" },
-                          { key: "omnigate-chat",   npm: "@ai-sdk/openai-compatible", route: "/opencode/chat",      color: "hsl(var(--warning))",   label: "Chat 协议" },
-                        ].map(item => (
-                          <div key={item.key} style={{ padding: "10px 12px", backgroundColor: "hsl(var(--bg-app))", borderRadius: "7px", border: "1px solid hsl(var(--border-color))" }}>
-                            <div style={{ fontSize: "0.78rem", fontWeight: "700", color: item.color, marginBottom: "4px" }}>{item.key}</div>
-                            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>{item.npm}</div>
-                            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "2px" }}>{item.route} → {item.label}供应商</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ marginTop: "10px", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                        💡 配置变更后自动同步更新模型字典，无需手动重新接管
-                      </div>
-                    </div>
-
-                    {/* 3 个独立协议子面板 */}
-                    {claudeCfg && renderProviderPanel(claudeCfg, "供应商列表及权重分配（Claude 协议）", "claude", "hsl(var(--primary))", "/opencode/claude")}
-                    {respCfg   && renderProviderPanel(respCfg,   "供应商列表及权重分配（Responses 协议）", "codex_responses", "hsl(var(--secondary))", "/opencode/responses")}
-                    {chatCfg   && renderProviderPanel(chatCfg,   "供应商列表及权重分配（Chat 协议）", "codex_chat", "hsl(var(--warning))", "/opencode/chat")}
-                  </div>
-                );
-              })()}
-
-            </div>
+            <ClientConfigTab
+              clientSubTab={clientSubTab}
+              setClientSubTab={setClientSubTab}
+              clientConfigs={clientConfigs}
+              renderCliMask={renderCliMask}
+              handleToggleClient={handleToggleClient}
+              handleStrategyChange={handleStrategyChange}
+              setAddingProviderForClient={setAddingProviderForClient}
+              providers={providers}
+              handleMoveProvider={handleMoveProvider}
+              handleWeightChange={handleWeightChange}
+              showToast={showToast}
+              handleToggleClientProvider={handleToggleClientProvider}
+              addingProviderForClient={addingProviderForClient}
+              addingProviderProtocol={addingProviderProtocol}
+              setAddingProviderProtocol={setAddingProviderProtocol}
+              addingProviderId={addingProviderId}
+              setAddingProviderId={setAddingProviderId}
+              setClientConfigs={setClientConfigs}
+              hijackProviderName={hijackProviderName}
+              setHijackProviderName={setHijackProviderName}
+            />
           )}
 
           {/* ============================================================================
               TAB: GLOBAL PROMPTS (全局提示词)
              ============================================================================ */}
           {activeTab === "global_prompts" && (
-            <div className="tab-pane animate-fade-in" style={{ paddingBottom: "100px" }}>
-              <div className="tab-selector" style={{ marginBottom: "24px", display: "flex", alignItems: "center" }}>
-                <div style={{ display: "inline-flex", gap: "8px" }}>
-                  <button className={`tab-select-btn ${globalPromptSubTab === "claude" ? "active" : ""}`} onClick={() => setGlobalPromptSubTab("claude")}>Claude Code</button>
-                  <button className={`tab-select-btn ${globalPromptSubTab === "codex" ? "active" : ""}`} onClick={() => setGlobalPromptSubTab("codex")}>Codex CLI</button>
-                  <button className={`tab-select-btn ${globalPromptSubTab === "opencode" ? "active" : ""}`} onClick={() => setGlobalPromptSubTab("opencode")}>OpenCode CLI</button>
-                </div>
-              </div>
-
-              <div>
-                {["claude", "codex", "opencode"].filter(id => id === globalPromptSubTab).map(clientId => (
-                  <div className="panel-card" key={clientId} style={{ position: "relative", display: "flex", flexDirection: "column" }}>
-                    {renderCliMask(clientId)}
-                    <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "16px" }}>
-                      <div>
-                        <h3 style={{ textTransform: "capitalize", fontSize: "1.2rem" }}>
-                          {clientId === "claude" ? "Claude Code" : clientId === "codex" ? "Codex CLI" : "OpenCode CLI"} 全局系统提示词
-                        </h3>
-                        <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                          原生文件: <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "1px 5px", borderRadius: "3px" }}>
-                            {clientId === "opencode" ? "~/.config/opencode/AGENTS.md" : `~/.${clientId}/${clientId === "claude" ? "CLAUDE.md" : "AGENTS.md"}`}
-                          </code>
-                        </p>
-                      </div>
-                      <div>
-                        <button className="btn-primary" style={{ padding: "6px 14px", fontSize: "0.85rem", height: "auto" }} onClick={() => handleSaveGlobalPrompt(clientId)}>保存设置</button>
-                      </div>
-                    </div>
-                    
-                    <textarea 
-                      value={globalPrompts[clientId] || ""} 
-                      onChange={(e) => setGlobalPrompts(prev => ({...prev, [clientId]: e.target.value}))}
-                      style={{ height: "calc(100vh - 340px)", minHeight: "400px", width: "100%", backgroundColor: "hsl(var(--bg-app))", border: "1px solid hsl(var(--border-color))", borderRadius: "8px", padding: "12px", color: "var(--text-primary)", fontSize: "0.9rem", fontFamily: "monospace", resize: "none", outline: "none", boxSizing: "border-box" }}
-                      placeholder={`在此输入 ${clientId} 的全局系统提示词...`}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+            <GlobalPromptsTab
+              globalPromptSubTab={globalPromptSubTab}
+              setGlobalPromptSubTab={setGlobalPromptSubTab}
+              renderCliMask={renderCliMask}
+              handleSaveGlobalPrompt={handleSaveGlobalPrompt}
+              globalPrompts={globalPrompts}
+              setGlobalPrompts={setGlobalPrompts}
+            />
           )}
 
           {/* ============================================================================
               TAB: SKILLS (技能管理)
              ============================================================================ */}
           {activeTab === "skills" && (
-            <div>
-              <div className="dashboard-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-                <div className="panel-card">
-                  <div className="card-header-row">
-                    <h3>添加新自定义技能 Prompt</h3>
-                  </div>
-                  <div className="form-group">
-                    <label>技能名称 (Unique Name)</label>
-                    <input placeholder="e.g. Markdown Translator" value={newSkillName} onChange={(e) => setNewSkillName(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>描述信息</label>
-                    <input placeholder="简述该技能提示词的作用..." value={newSkillDesc} onChange={(e) => setNewSkillDesc(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>核心 Prompt 指令内容</label>
-                    <textarea className="editor-textarea" style={{ width: "100%", height: "180px", fontFamily: "inherit" }} placeholder="当该技能被触发时，注入的全局 system prompt..." value={newSkillPrompt} onChange={(e) => setNewSkillPrompt(e.target.value)}></textarea>
-                  </div>
-                  <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={handleAddSkill}><Plus size={16} /> 添加到本地矩阵</button>
-                </div>
-
-                <div className="panel-card">
-                  <div className="card-header-row">
-                    <h3>已导入 Skills 技能列表</h3>
-                  </div>
-                  <div className="list-group">
-                    {skills.map((s, i) => (
-                      <div className="list-item-card" key={i} style={{ borderLeft: s.is_active ? "3px solid hsl(var(--primary))" : "3px solid transparent" }}>
-                        <div className="list-item-info">
-                          <h4>{s.name}</h4>
-                          <p>{s.description}</p>
-                        </div>
-                        <div className="list-item-controls">
-                          <span style={{ fontSize: "0.76rem", color: "var(--text-muted)", cursor: "pointer", textDecoration: "underline" }} onClick={() => setEditingSkillId(s.id)}>编辑指令</span>
-                          <div className="switch-container" onClick={() => handleToggleSkill(s.id)}>
-                            <div className={`switch-track ${s.is_active ? "active" : ""}`}>
-                              <div className="switch-thumb"></div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* 实时指令 Prompt 交互式编辑器 */}
-              <div className="panel-card" style={{ marginTop: "24px" }}>
-                <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "20px" }}>
-                  <div>
-                    <h3>交互式技能提示词编辑器</h3>
-                    <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>在下方可实时微调修改已载入技能的指令框架</p>
-                  </div>
-                  <div style={{ display: "flex", gap: "10px" }}>
-                    <CustomSelect 
-                      value={editingSkillId} 
-                      onChange={(v) => setEditingSkillId(v)} 
-                      options={skills.map(s => ({ value: s.id, label: s.name }))}
-                      width="160px"
-                    />
-                    <button className="btn-primary" onClick={handleSaveSkillPrompt}><Check size={16} /> 保存修改</button>
-                  </div>
-                </div>
-
-                <div className="editor-container" style={{ height: "260px", gridTemplateColumns: "1fr" }}>
-                  <textarea className="editor-textarea" value={skillEditorContent} onChange={(e) => setSkillEditorContent(e.target.value)} placeholder="核心 system prompt 载入中..."></textarea>
-                </div>
-              </div>
-            </div>
+            <SkillsTab
+              newSkillName={newSkillName}
+              setNewSkillName={setNewSkillName}
+              newSkillDesc={newSkillDesc}
+              setNewSkillDesc={setNewSkillDesc}
+              newSkillPrompt={newSkillPrompt}
+              setNewSkillPrompt={setNewSkillPrompt}
+              handleAddSkill={handleAddSkill}
+              skills={skills}
+              setEditingSkillId={setEditingSkillId}
+              handleToggleSkill={handleToggleSkill}
+              editingSkillId={editingSkillId}
+              handleSaveSkillPrompt={handleSaveSkillPrompt}
+              skillEditorContent={skillEditorContent}
+              setSkillEditorContent={setSkillEditorContent}
+            />
           )}
 
           {/* ============================================================================
@@ -2832,84 +1973,17 @@ function App() {
               TAB: SETTINGS (系统全局设置)
              ============================================================================ */}
           {activeTab === "settings" && (
-            <div>
-              <div className="tabs-control-row">
-                <button className={`tab-select-btn ${settingsSubTab === "proxy" ? "active" : ""}`} onClick={() => setSettingsSubTab("proxy")}>本地网关接管</button>
-
-                <button className={`tab-select-btn ${settingsSubTab === "database" ? "active" : ""}`} onClick={() => setSettingsSubTab("database")}>数据库管理</button>
-                <button className={`tab-select-btn ${settingsSubTab === "about" ? "active" : ""}`} onClick={() => setSettingsSubTab("about")}>关于</button>
-              </div>
-
-              {settingsSubTab === "proxy" && (
-                <div className="panel-card">
-                  <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "8px" }}>本地网关身份认证与接管配置</h3>
-                  <p style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: "20px" }}>配置并获取属于您的本地专属代理网关 URL 以及全局安全鉴权凭证。您可以将其填入任何支持自定义 Endpoint 的大模型客户端引擎中。</p>
-                  
-                  <div className="form-group" style={{ marginBottom: "16px" }}>
-                    <label>代理服务基础 URL</label>
-                    <input 
-                      type="text" 
-                      className="modal-input" 
-                      value={hijackBaseUrl} 
-                      onChange={e => setHijackBaseUrl(e.target.value)} 
-                      placeholder="http://127.0.0.1:3456" 
-                    />
-                  </div>
-
-                  <div className="form-group" style={{ marginBottom: "24px" }}>
-                    <label style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>接管凭证 (Proxy API Key)</span>
-                      <button className="btn-secondary" style={{ padding: "2px 8px", fontSize: "0.75rem" }} onClick={generateRandomKey}>
-                        随机生成
-                      </button>
-                    </label>
-                    <input 
-                      type="text" 
-                      className="modal-input" 
-                      value={hijackApiKey} 
-                      onChange={e => setHijackApiKey(e.target.value)} 
-                      placeholder="点击右上角随机生成..." 
-                    />
-                  </div>
-
-                </div>
-              )}
-
-              {settingsSubTab === "database" && (
-                <div className="panel-card">
-                  <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "16px" }}>持久化存储数据库</h3>
-                  <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginBottom: "20px" }}>OmniGate 正在使用高安全级别本地 SQLite 事务存储。主键 UUID 已根据协议完美去除连字符。</p>
-                  
-                  <div style={{ padding: "16px", backgroundColor: "hsl(var(--bg-app))", borderRadius: "8px", border: "1px solid hsl(var(--border-color))", marginBottom: "24px" }}>
-                    <div style={{ fontSize: "0.8rem", marginBottom: "6px", display: "flex", alignItems: "center", gap: "8px" }}><Database size={15} style={{ color: "hsl(var(--primary))" }} /> <strong>数据库驱动:</strong> <code style={{ color: "hsl(var(--primary))" }}>rusqlite + bundled SQLite v3</code></div>
-                    <div style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "8px" }}><Info size={15} style={{ color: "hsl(var(--secondary))" }} /> <strong>存储位置:</strong> <code style={{ wordBreak: "break-all" }}>~/.config/omnigate/omnigate.db</code></div>
-                  </div>
-
-                  <button className="btn-secondary" style={{ color: "hsl(var(--danger))", borderColor: "hsl(var(--danger) / 0.2)" }} onClick={() => {
-                    if (confirm("确定要清空本地所有供应商配置与统计数据吗？该操作不可撤销。")) {
-                      alert("所有本地数据已安全清理并重置！");
-                    }
-                  }}><Trash2 size={15} /> 清除所有数据并重置</button>
-                </div>
-              )}
-
-
-              {settingsSubTab === "about" && (
-                <div className="panel-card" style={{ textAlign: "center", padding: "40px 20px" }}>
-                  <div className="logo-icon" style={{ margin: "0 auto 20px auto", width: "64px", height: "64px", fontSize: "2rem" }}>Ω</div>
-                  <h2 style={{ fontFamily: "var(--font-display)", fontWeight: "700", fontSize: "1.6rem" }}>OmniGate Rotator</h2>
-                  <p style={{ color: "var(--text-secondary)", fontSize: "0.86rem", marginTop: "4px" }}>跨协议多账户 AI 负载轮换调度管理器</p>
-                  
-                  <div style={{ margin: "24px 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                    <p>内核版本: Rust Core v0.1.0-alpha</p>
-                    <p>UI 架构: React 18 + TS + Lucide Icons</p>
-                  </div>
-                  
-                  <p style={{ fontSize: "0.78rem", color: "hsl(var(--primary))", fontWeight: "600" }}>© 2026 OmniGate DeepMind Pair Programming.</p>
-                </div>
-              )}
-            </div>
+            <SettingsTab
+              settingsSubTab={settingsSubTab}
+              setSettingsSubTab={setSettingsSubTab}
+              hijackBaseUrl={hijackBaseUrl}
+              setHijackBaseUrl={setHijackBaseUrl}
+              generateRandomKey={generateRandomKey}
+              hijackApiKey={hijackApiKey}
+              setHijackApiKey={setHijackApiKey}
+            />
           )}
+
         </section>
       </main>
 
@@ -2917,304 +1991,40 @@ function App() {
       {/* ============================================================================
           MODAL: 供应商导入预览
          ============================================================================ */}
-      {showImportModal && (
-        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowImportModal(false); } }}>
-          <div className="modal-content-window import-preview-modal">
-            {/* Header */}
-            <header className="modal-header-section">
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)))", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Download size={18} style={{ color: "#fff" }} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: "1.05rem", fontWeight: 700, marginBottom: "2px" }}>导入供应商预览</h3>
-                  <p style={{ fontSize: "0.76rem", color: "hsl(var(--text-secondary))", margin: 0 }}>
-                    {importFileName} &nbsp;·&nbsp;
-                    共 <strong>{importPreviewList.length}</strong> 个供应商，
-                    <strong style={{ color: "hsl(var(--primary))" }}>{importPreviewList.filter(x => !x.alreadyExists && !x.isImported).length}</strong> 个可导入，
-                    <strong style={{ color: "hsl(var(--text-muted))" }}>{importPreviewList.filter(x => x.alreadyExists).length}</strong> 个已存在，
-                    <strong style={{ color: "hsl(120,60%,50%)" }}>{importPreviewList.filter(x => x.isImported).length}</strong> 个已完成
-                  </p>
-                </div>
-              </div>
-              <button className="modal-close-btn" onClick={() => setShowImportModal(false)}><X size={20} /></button>
-            </header>
-
-            {/* Bulk action bar */}
-            <div style={{ padding: "14px 24px", borderBottom: "1px solid hsl(var(--border-color))", display: "flex", alignItems: "center", justifyContent: "space-between", backgroundColor: "hsl(var(--bg-sidebar) / 0.4)" }}>
-              <span style={{ fontSize: "0.8rem", color: "hsl(var(--text-secondary))" }}>
-                可添加的排在前面，已存在的排在后面（基于 API URL + API Key 双重匹配）
-              </span>
-              {(() => {
-                const importableCount = importPreviewList.filter(x => !x.alreadyExists && !x.isImported && !x.isImporting).length;
-                return (
-                  <button
-                    className="btn-primary"
-                    style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "7px 14px", opacity: importableCount === 0 ? 0.4 : 1 }}
-                    disabled={importableCount === 0}
-                    onClick={handleImportAllNew}
-                  >
-                    <PackagePlus size={15} />
-                    一键导入所有可添加的 ({importableCount})
-                  </button>
-                );
-              })()}
-            </div>
-
-            {/* Provider list */}
-            <div className="modal-body-section" style={{ padding: "0" }}>
-              <table className="data-table import-preview-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: "32px" }}></th>
-                    <th>供应商名称</th>
-                    <th>API URL</th>
-                    <th>协议</th>
-                    <th style={{ textAlign: "center" }}>模型数</th>
-                    <th style={{ textAlign: "right" }}>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {importPreviewList.map((item, idx) => {
-                    const done = item.isImported;
-                    const loading = item.isImporting;
-                    return (
-                      <tr key={idx} className={item.alreadyExists ? "import-row-exists" : done ? "import-row-done" : "import-row-new"}>
-                        {/* Status icon */}
-                        <td style={{ textAlign: "center", paddingRight: "4px" }}>
-                          {done ? (
-                            <div style={{ width: 22, height: 22, borderRadius: "50%", background: "hsl(142 60% 45%)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                              <Check size={13} style={{ color: "#fff" }} />
-                            </div>
-                          ) : item.alreadyExists ? (
-                            <div style={{ width: 22, height: 22, borderRadius: "50%", background: "hsl(var(--border-color))", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                              <PackageCheck size={13} style={{ color: "hsl(var(--text-muted))" }} />
-                            </div>
-                          ) : (
-                            <div style={{ width: 22, height: 22, borderRadius: "50%", background: "hsl(var(--primary) / 0.18)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                              <PackagePlus size={13} style={{ color: "hsl(var(--primary))" }} />
-                            </div>
-                          )}
-                        </td>
-                        {/* Name */}
-                        <td style={{ fontWeight: 600, fontSize: "0.86rem", color: item.alreadyExists ? "hsl(var(--text-muted))" : "hsl(var(--text-primary))" }}>
-                          {item.name}
-                        </td>
-                        {/* API URL */}
-                        <td>
-                          <code style={{ fontSize: "0.73rem", color: item.alreadyExists ? "hsl(var(--text-muted))" : "hsl(var(--text-secondary))", wordBreak: "break-all" }}>
-                            {item.api_url}
-                          </code>
-                        </td>
-                        {/* Protocol badge */}
-                        <td>
-                          <span className={`status-badge ${item.alreadyExists ? "" : "secondary"}`} style={{ opacity: item.alreadyExists ? 0.5 : 1 }}>
-                            {item.protocol === "claude" && "Claude"}
-                            {item.protocol === "codex_responses" && "Codex /resp"}
-                            {item.protocol === "codex_chat" && "Codex /chat"}
-                          </span>
-                        </td>
-                        {/* Model count */}
-                        <td style={{ textAlign: "center" }}>
-                          <span style={{ fontSize: "0.82rem", fontWeight: 600, color: item.alreadyExists ? "hsl(var(--text-muted))" : "hsl(var(--text-secondary))" }}>
-                            {item.models.length}
-                            {item.protocol === "claude" && item.models.some(m => m.mapping) && (
-                              <span style={{ marginLeft: "4px", fontSize: "0.68rem", color: "hsl(var(--primary))", fontWeight: 400 }}>+映射</span>
-                            )}
-                          </span>
-                        </td>
-                        {/* Action */}
-                        <td style={{ textAlign: "right" }}>
-                          {done ? (
-                            <span style={{ fontSize: "0.78rem", color: "hsl(142 60% 45%)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                              <Check size={13} /> 已导入
-                            </span>
-                          ) : item.alreadyExists ? (
-                            <button disabled style={{ padding: "4px 12px", fontSize: "0.76rem", borderRadius: "6px", border: "1px solid hsl(var(--border-color))", background: "transparent", color: "hsl(var(--text-muted))", cursor: "not-allowed" }}>
-                              已存在
-                            </button>
-                          ) : (
-                            <button
-                              className="btn-primary"
-                              style={{ padding: "4px 12px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: "5px", opacity: loading ? 0.6 : 1 }}
-                              disabled={loading}
-                              onClick={() => handleImportSingleProvider(idx)}
-                            >
-                              {loading ? (
-                                <><RotateCw size={12} className="anim-spin" /> 导入中...</>
-                              ) : (
-                                <><Plus size={12} /> 添加</>
-                              )}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Footer */}
-            <div style={{ padding: "14px 24px", borderTop: "1px solid hsl(var(--border-color))", display: "flex", justifyContent: "flex-end" }}>
-              <button className="btn-secondary" style={{ fontSize: "0.84rem" }} onClick={() => setShowImportModal(false)}>关闭</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ImportPreviewModal
+        showImportModal={showImportModal}
+        setShowImportModal={setShowImportModal}
+        importFileName={importFileName}
+        importPreviewList={importPreviewList}
+        handleImportAllNew={handleImportAllNew}
+        handleImportSingleProvider={handleImportSingleProvider}
+      />
 
       {/* ============================================================================
           MODAL: 模型映射 Modal
          ============================================================================ */}
-      {showMappingModal && mappingProvider && (
-        <div className="modal-overlay">
-          <div className="modal-content-window" style={{ maxWidth: "600px", width: "90%" }}>
-            <header className="modal-header-section" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)))", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Server size={16} style={{ color: "#fff" }} />
-                </div>
-                <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1rem", margin: 0 }}>模型映射 <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "normal" }}>(仅限 Claude 转发使用)</span></h3>
-              </div>
-              <button
-                style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}
-                onClick={() => setShowMappingModal(false)}
-              >
-                <X size={15} />
-              </button>
-            </header>
-
-            <div className="modal-body-section" style={{ padding: "20px", maxHeight: "60vh", overflowY: "auto" }}>
-              <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "16px", lineHeight: "1.5" }}>
-                💡 仅在 <strong>Claude 客户端转发</strong> 时生效。<br/>
-                当客户端请求的模型等于映射别名时，将自动替换为左侧的实际模型。多个别名请用英文逗号 <code style={{ fontSize: "0.75rem", backgroundColor: "hsl(var(--bg-app))", padding: "2px 4px", borderRadius: "4px"}}>,</code> 分隔。<br/>
-                如果您勾选了<strong>「设为默认」</strong>，则无论客户端请求什么模型，都将被强制无条件路由至该默认模型（此时映射配置将失效并被禁用）。
-              </p>
-              
-              {mappingModels.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "20px", color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                  该供应商尚未启用任何模型，请先在“模型信息”中选择并启用模型。
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  {mappingModels.map(m => (
-                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)" }}>
-                      <div style={{ flex: 1, fontSize: "0.85rem", fontWeight: "600", color: "var(--text-primary)" }}>
-                        {m.name}
-                      </div>
-                      <div className="form-group" style={{ flex: 2, marginBottom: 0 }}>
-                        <input
-                          type="text"
-                          style={{ padding: "8px 12px", fontSize: "0.8rem", opacity: m.is_mapped_default ? 0.5 : 1 }}
-                          placeholder="例如: claude-opus-4-6"
-                          value={m.mapping || ""}
-                          onChange={(e) => handleMappingChange(m.id, e.target.value)}
-                          onBlur={(e) => handleMappingBlur(m.id, e.target.value)}
-                          disabled={m.is_mapped_default}
-                        />
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: "80px", justifyContent: "flex-end" }}>
-                        <input 
-                          type="checkbox" 
-                          id={`default-${m.id}`}
-                          checked={m.is_mapped_default || false}
-                          onChange={(e) => handleDefaultChange(m.id, e.target.checked)}
-                          style={{ cursor: "pointer", accentColor: "hsl(var(--primary))" }}
-                        />
-                        <label htmlFor={`default-${m.id}`} style={{ fontSize: "0.8rem", color: "var(--text-secondary)", cursor: "pointer", margin: 0, fontWeight: "normal" }}>设为默认</label>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
-                <button className="btn-primary" style={{ padding: "8px 24px", fontSize: "0.85rem" }} onClick={() => setShowMappingModal(false)}>
-                  完成配置
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <MappingModal
+        showMappingModal={showMappingModal}
+        setShowMappingModal={setShowMappingModal}
+        mappingProvider={mappingProvider}
+        mappingModels={mappingModels}
+        handleMappingChange={handleMappingChange}
+        handleMappingBlur={handleMappingBlur}
+        handleDefaultChange={handleDefaultChange}
+      />
 
       {/* ============================================================================
           MODAL: 供应商连接配置
          ============================================================================ */}
-      {showProviderConnectionModal && editConnectionData && (
-        <div className="modal-overlay">
-          <div className="modal-content-window" style={{ maxWidth: "560px", width: "90%" }}>
-            <header className="modal-header-section" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)))", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Server size={16} style={{ color: "#fff" }} />
-                </div>
-                <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1rem", margin: 0 }}>连接配置</h3>
-              </div>
-              <button
-                style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}
-                onClick={() => {
-                  setShowProviderConnectionModal(false);
-                  setEditConnectionData(null);
-                }}
-              >
-                <X size={15} />
-              </button>
-            </header>
-
-            <div className="modal-body-section" style={{ padding: "20px" }}>
-              <div className="form-group">
-                <label>供应商名称</label>
-                <input 
-                  value={editConnectionData.name} 
-                  onChange={(e) => setEditConnectionData({ ...editConnectionData, name: e.target.value })} 
-                />
-              </div>
-              <div className="form-group">
-                <label>协议类型</label>
-                <CustomSelect 
-                  value={editConnectionData.protocol} 
-                  onChange={(v) => setEditConnectionData({ ...editConnectionData, protocol: v })}
-                  options={[
-                    { value: "claude", label: "Claude 协议" },
-                    { value: "codex_responses", label: "Codex /responses 协议" },
-                    { value: "codex_chat", label: "Codex /chat 协议" }
-                  ]}
-                />
-              </div>
-              <div className="form-group">
-                <label>API 基础地址</label>
-                <input 
-                  value={editConnectionData.api_url} 
-                  onChange={(e) => setEditConnectionData({ ...editConnectionData, api_url: e.target.value })} 
-                />
-              </div>
-              <div className="form-group">
-                <label>API Key</label>
-                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <input 
-                    type={showConnectionApiKey ? "text" : "password"}
-                    value={editConnectionData.api_key} 
-                    onChange={(e) => setEditConnectionData({ ...editConnectionData, api_key: e.target.value })} 
-                    style={{ paddingRight: "36px", width: "100%" }}
-                  />
-                  <div 
-                    style={{ position: "absolute", right: "10px", cursor: "pointer", color: "var(--text-muted)", display: "flex", alignItems: "center" }}
-                    onClick={() => setShowConnectionApiKey(!showConnectionApiKey)}
-                  >
-                    {showConnectionApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-                <button className="btn-secondary" onClick={() => setShowProviderConnectionModal(false)}>取消</button>
-                <button className="btn-primary" onClick={handleSaveProviderConnection}>保存配置</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConnectionModal
+        showProviderConnectionModal={showProviderConnectionModal}
+        setShowProviderConnectionModal={setShowProviderConnectionModal}
+        editConnectionData={editConnectionData}
+        setEditConnectionData={setEditConnectionData}
+        showConnectionApiKey={showConnectionApiKey}
+        setShowConnectionApiKey={setShowConnectionApiKey}
+        handleSaveProviderConnection={handleSaveProviderConnection}
+      />
 
       {/* ============================================================================
           MODAL: ADD PROVIDER (添加供应商四步向导)
@@ -3222,702 +2032,68 @@ function App() {
       {/* ============================================================================
           MODAL: 供应商详情与模型管理
          ============================================================================ */}
-      {showProviderDetailsModal && selectedProviderForDetails && (
-        <div className="modal-overlay">
-          <div className="modal-content-window" style={{ maxWidth: "860px", width: "92%", maxHeight: "92vh", display: "flex", flexDirection: "column" }}>
-            
-            {/* ---- 弹窗标题栏 ---- */}
-            <header className="modal-header-section" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px", flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)))", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Server size={16} style={{ color: "#fff" }} />
-                </div>
-                <div>
-                  <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1rem", margin: 0 }}>
-                    {selectedProviderForDetails.name} 模型管理
-                  </h3>
-                  <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontFamily: "monospace" }}>
-                    {selectedProviderForDetails.api_url}
-                  </span>
-                </div>
-              </div>
-              <button
-                style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}
-                onClick={() => {
-                  setShowProviderDetailsModal(false);
-                  setSelectedProviderForDetails(null);
-                }}
-              >
-                <X size={15} />
-              </button>
-            </header>
+      <ProviderDetailsModal
+        showProviderDetailsModal={showProviderDetailsModal}
+        setShowProviderDetailsModal={setShowProviderDetailsModal}
+        selectedProviderForDetails={selectedProviderForDetails}
+        setSelectedProviderForDetails={setSelectedProviderForDetails}
+        models={models}
+        modelsSearchQuery={modelsSearchQuery}
+        setModelsSearchQuery={setModelsSearchQuery}
+        manualModelName={manualModelName}
+        setManualModelName={setManualModelName}
+        handleManualAddModel={handleManualAddModel}
+        handleOpenPullModal={handleOpenPullModal}
+        activeFeatureTab={activeFeatureTab}
+        setActiveFeatureTab={setActiveFeatureTab}
+        handleDeleteModel={handleDeleteModel}
+      />
 
-            <div className="modal-body-section" style={{ display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", padding: "14px 20px", flex: 1 }}>
-              
-              {/* ---- 下半：模型管理 (详情界面) ---- */}
-              {(() => {
-                const providerModels = models.filter(m => m.provider_id === selectedProviderForDetails.id);
-                const hasAnyCapabilities = providerModels.some(m => 
-                  m.cap_reasoning || m.cap_vision || m.cap_tools || m.cap_embedding || m.cap_reranking || m.cap_long_context
-                );
-                
-                const filteredDetailsModels = models.filter(m => {
-                  if (m.provider_id !== selectedProviderForDetails.id) return false;
-                  if (modelsSearchQuery.trim()) {
-                    const q = modelsSearchQuery.toLowerCase();
-                    if (!m.name.toLowerCase().includes(q) && !(m.display_name || "").toLowerCase().includes(q)) return false;
-                  }
-                  if (hasAnyCapabilities && activeFeatureTab !== "all") {
-                    switch (activeFeatureTab) {
-                      case "reasoning":  return !!m.cap_reasoning;
-                      case "vision":     return !!m.cap_vision;
-                      case "tools":      return !!m.cap_tools;
-                      case "embedding":  return !!m.cap_embedding;
-                      case "reranking":  return !!m.cap_reranking;
-                      case "long_ctx":   return !!m.cap_long_context;
-                      default:           return true;
-                    }
-                  }
-                  return true;
-                });
+      <AddProviderModal
+        showAddProviderModal={showAddProviderModal}
+        setShowAddProviderModal={setShowAddProviderModal}
+        wizardStep={wizardStep}
+        setWizardStep={setWizardStep}
+        newProvName={newProvName}
+        setNewProvName={setNewProvName}
+        newProvUrl={newProvUrl}
+        setNewProvUrl={setNewProvUrl}
+        newProvProtocol={newProvProtocol}
+        setNewProvProtocol={setNewProvProtocol}
+        newProvKey={newProvKey}
+        setNewProvKey={setNewProvKey}
+        isFetchingModels={isFetchingModels}
+        fetchModelsError={fetchModelsError}
+        setFetchModelsError={setFetchModelsError}
+        handleFetchModels={handleFetchModels}
+        handleSaveProviderOnly={handleSaveProviderOnly}
+        fetchedModels={fetchedModels}
+        wizardSearchQuery={wizardSearchQuery}
+        setWizardSearchQuery={setWizardSearchQuery}
+        wizardFeatureTab={wizardFeatureTab}
+        setWizardFeatureTab={setWizardFeatureTab}
+        selectedFetchedModelNames={selectedFetchedModelNames}
+        setSelectedFetchedModelNames={setSelectedFetchedModelNames}
+        handleAddProviderSubmit={handleAddProviderSubmit}
+      />
 
-                return (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
-                    {/* 工具栏：搜索 + 手动添加 + 数量 + 拉取 */}
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      {/* 搜索框 */}
-                      <div style={{ display: "flex", alignItems: "center", flex: 1, height: "34px", borderRadius: "8px", border: "1px solid hsl(var(--border-color))", backgroundColor: "hsl(var(--bg-app))", padding: "0 10px", position: "relative" }}>
-                        <Search size={13} style={{ color: "hsl(var(--text-secondary))", position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)" }} />
-                        <input 
-                          placeholder="搜索模型 ID 或名称" 
-                          value={modelsSearchQuery}
-                          onChange={(e) => setModelsSearchQuery(e.target.value)}
-                          style={{ background: "transparent", border: "none", color: "hsl(var(--text-primary))", fontSize: "0.82rem", outline: "none", width: "100%", paddingLeft: "22px" }}
-                        />
-                      </div>
-
-                      {/* 手动输入 + 添加按钮 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                        <input
-                          placeholder="手动输入模型 ID"
-                          value={manualModelName}
-                          onChange={(e) => setManualModelName(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleManualAddModel(); }}
-                          style={{
-                            height: "34px", width: "160px", borderRadius: "8px",
-                            border: "1px solid hsl(var(--border-color))",
-                            backgroundColor: "hsl(var(--bg-app))",
-                            color: "hsl(var(--text-primary))",
-                            fontSize: "0.8rem", outline: "none", padding: "0 10px"
-                          }}
-                        />
-                        <button
-                          onClick={handleManualAddModel}
-                          title="手动添加模型"
-                          style={{
-                            height: "34px", padding: "0 12px", borderRadius: "8px",
-                            border: "1px solid hsl(var(--primary) / 0.3)",
-                            backgroundColor: "hsl(var(--primary) / 0.08)",
-                            color: "hsl(var(--primary))",
-                            fontSize: "0.8rem", fontWeight: 600,
-                            display: "inline-flex", alignItems: "center", gap: "4px",
-                            cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap"
-                          }}
-                          onMouseOver={(e) => { e.currentTarget.style.backgroundColor = "hsl(var(--primary) / 0.15)"; }}
-                          onMouseOut={(e) => { e.currentTarget.style.backgroundColor = "hsl(var(--primary) / 0.08)"; }}
-                        >
-                          <Plus size={13} />
-                          <span>手动添加</span>
-                        </button>
-                      </div>
-
-                      {/* 模型数量统计 */}
-                      <div style={{ fontSize: "0.8rem", color: "hsl(var(--text-secondary))", fontWeight: 500, whiteSpace: "nowrap" }}>
-                        共 <strong style={{ color: "hsl(var(--primary))" }}>{filteredDetailsModels.length}</strong> 个
-                      </div>
-
-                      {/* 拉取模型按钮 */}
-                      <button
-                        onClick={handleOpenPullModal}
-                        style={{ 
-                          height: "34px", 
-                          borderRadius: "8px", 
-                          fontSize: "0.82rem",
-                          fontWeight: 600,
-                          padding: "0 14px",
-                          display: "inline-flex", 
-                          alignItems: "center", 
-                          gap: "6px",
-                          cursor: "pointer",
-                          border: "none",
-                          backgroundColor: "hsl(var(--primary))",
-                          color: "#fff",
-                          boxShadow: "0 3px 8px hsl(var(--primary) / 0.2)",
-                          transition: "all 0.15s",
-                          whiteSpace: "nowrap"
-                        }}
-                        onMouseOver={(e) => { e.currentTarget.style.opacity = "0.88"; }}
-                        onMouseOut={(e) => { e.currentTarget.style.opacity = "1"; }}
-                      >
-                        <Plus size={13} />
-                        <span>拉取模型</span>
-                      </button>
-                    </div>
-
-                    {/* 能力过滤 Tabs */}
-                    {hasAnyCapabilities && (
-                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                        {[
-                          { id: "all",       label: "全部",     icon: null },
-                          { id: "reasoning", label: "推理",     icon: <Brain size={12} /> },
-                          { id: "vision",    label: "视觉",     icon: <Eye size={12} /> },
-                          { id: "tools",     label: "工具调用", icon: <Wrench size={12} /> },
-                          { id: "embedding", label: "嵌入向量", icon: <Database size={12} /> },
-                          { id: "reranking", label: "重排序",   icon: <ArrowUpDown size={12} /> },
-                          { id: "long_ctx",  label: "长上下文", icon: <Maximize2 size={12} /> },
-                        ].map(tab => {
-                          const isActive = activeFeatureTab === tab.id;
-                          return (
-                            <button 
-                              key={tab.id} 
-                              onClick={() => setActiveFeatureTab(tab.id)}
-                              style={{
-                                display: "flex", alignItems: "center", gap: "6px",
-                                fontSize: "0.76rem", padding: "6px 12px", borderRadius: "8px",
-                                border: isActive ? "1px solid hsl(var(--primary) / 0.4)" : "1px solid hsl(var(--border-color))",
-                                backgroundColor: isActive ? "hsl(var(--primary) / 0.1)" : "hsl(var(--bg-app))",
-                                color: isActive ? "hsl(var(--primary))" : "hsl(var(--text-secondary))",
-                                cursor: "pointer", transition: "all 0.2s", fontWeight: isActive ? 600 : 400
-                              }}
-                              onMouseOver={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "hsl(var(--border-card))"; }}
-                              onMouseOut={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "hsl(var(--bg-app))"; }}
-                            >
-                              {tab.icon}
-                              {tab.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* 模型表格列表 */}
-                    <div style={{ height: "300px", overflowY: "auto", border: "1px solid hsl(var(--border-color))", borderRadius: "12px", backgroundColor: "hsl(var(--bg-card))", boxShadow: "var(--card-shadow)" }}>
-                      {filteredDetailsModels.length === 0 ? (
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "hsl(var(--text-muted))", fontSize: "0.82rem", padding: "40px 0" }}>
-                          <Database size={24} style={{ opacity: 0.3, marginBottom: "8px" }} />
-                          <span>暂无已添加的模型</span>
-                          <span style={{ fontSize: "0.74rem", opacity: 0.6, marginTop: "4px" }}>请点击上方“拉取模型”按钮发现并添加</span>
-                        </div>
-                      ) : (
-                        <table className="data-table" style={{ width: "100%", borderCollapse: "collapse" }}>
-                          <thead>
-                            <tr style={{ borderBottom: "1px solid hsl(var(--border-color))", backgroundColor: "hsl(var(--bg-app))" }}>
-                              <th style={{ position: "sticky", top: 0, zIndex: 1, backgroundColor: "hsl(var(--bg-app))", textAlign: "left", padding: "10px 16px", fontSize: "0.78rem", color: "hsl(var(--text-secondary))", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid hsl(var(--border-color))" }}>模型标识名称</th>
-                              {hasAnyCapabilities && (
-                                <th style={{ position: "sticky", top: 0, zIndex: 1, backgroundColor: "hsl(var(--bg-app))", textAlign: "left", padding: "10px 16px", fontSize: "0.78rem", color: "hsl(var(--text-secondary))", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid hsl(var(--border-color))" }}>能力特性</th>
-                              )}
-                              <th style={{ position: "sticky", top: 0, zIndex: 1, backgroundColor: "hsl(var(--bg-app))", width: "80px", textAlign: "right", padding: "10px 16px", fontSize: "0.78rem", color: "hsl(var(--text-secondary))", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid hsl(var(--border-color))" }}>操作</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredDetailsModels.map((m, idx) => {
-                              const isReasoning = !!m.cap_reasoning;
-                              const grad = isReasoning 
-                                ? "linear-gradient(135deg, hsl(var(--primary) / 0.12), hsl(var(--primary) / 0.22))"
-                                : "linear-gradient(135deg, hsl(var(--secondary) / 0.12), hsl(var(--secondary) / 0.22))";
-                              const iconColor = isReasoning ? "hsl(var(--primary))" : "hsl(var(--secondary))";
-                              const techIcon = isReasoning ? <Brain size={14} /> : <Cpu size={14} />;
-
-                              return (
-                                <tr 
-                                  key={m.id || idx}
-                                  style={{ 
-                                    borderBottom: "1px solid hsl(var(--border-color))", 
-                                    backgroundColor: "transparent",
-                                    transition: "background-color 0.2s"
-                                  }}
-                                >
-                                  {/* 左侧：专业微徽标 + 模型名 */}
-                                  <td style={{ padding: "10px 16px" }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
-                                      <div style={{ 
-                                        width: "32px", height: "32px", borderRadius: "8px", 
-                                        background: grad, flexShrink: 0,
-                                        display: "flex", alignItems: "center", justifyContent: "center",
-                                        color: iconColor
-                                      }}>
-                                        {techIcon}
-                                      </div>
-                                      <div style={{ minWidth: 0 }}>
-                                        <div style={{ fontFamily: "var(--font-sans)", fontSize: "0.86rem", fontWeight: 600, color: "hsl(var(--text-primary))", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "340px", letterSpacing: "-0.01em" }}>
-                                          {m.name}
-                                        </div>
-                                        {m.context_length && m.context_length !== "-" && (
-                                          <div style={{ fontSize: "0.72rem", color: "hsl(var(--text-muted))", marginTop: "3px" }}>{m.context_length} ctx</div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </td>
-
-                                  {/* 能力特性 */}
-                                  {hasAnyCapabilities && (
-                                    <td style={{ padding: "10px 16px" }}>
-                                      <div style={{ display: "flex", gap: "4px" }}>
-                                        {m.cap_reasoning && (
-                                          <span title="推理 / Chain-of-Thought" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "6px", backgroundColor: "rgba(168, 85, 247, 0.12)", color: "#a855f7" }}>
-                                            <Brain size={12} />
-                                          </span>
-                                        )}
-                                        {m.cap_vision && (
-                                          <span title="视觉 / Multimodal" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "6px", backgroundColor: "rgba(59, 130, 246, 0.12)", color: "#3b82f6" }}>
-                                            <Eye size={12} />
-                                          </span>
-                                        )}
-                                        {m.cap_tools && (
-                                          <span title="工具调用 / Function Calling" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "6px", backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#f59e0b" }}>
-                                            <Wrench size={12} />
-                                          </span>
-                                        )}
-                                        {m.cap_embedding && (
-                                          <span title="嵌入向量模型" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "6px", backgroundColor: "rgba(16, 185, 129, 0.12)", color: "#10b981" }}>
-                                            <Database size={12} />
-                                          </span>
-                                        )}
-                                        {m.cap_reranking && (
-                                          <span title="文本重排序模型" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "6px", backgroundColor: "rgba(20, 184, 166, 0.12)", color: "#14b8a6" }}>
-                                            <ArrowUpDown size={12} />
-                                          </span>
-                                        )}
-                                        {m.cap_long_context && (
-                                          <span title="长上下文 ≥ 128K" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "6px", backgroundColor: "rgba(236, 72, 153, 0.12)", color: "#ec4899" }}>
-                                            <Maximize2 size={12} />
-                                          </span>
-                                        )}
-                                      </div>
-                                    </td>
-                                  )}
-
-                                  {/* 右侧：删除按钮 */}
-                                  <td style={{ padding: "10px 16px", textAlign: "right" }}>
-                                    <button
-                                      onClick={() => handleDeleteModel(m.id)}
-                                      title="删除此模型"
-                                      style={{ 
-                                        width: "32px", height: "32px", borderRadius: "8px",
-                                        border: "1px solid hsl(var(--danger) / 0.15)",
-                                        backgroundColor: "hsl(var(--danger) / 0.06)",
-                                        color: "hsl(var(--danger))",
-                                        display: "inline-flex", alignItems: "center", justifyContent: "center",
-                                        cursor: "pointer", transition: "all 0.2s"
-                                      }}
-                                      onMouseOver={(e) => { e.currentTarget.style.backgroundColor = "hsl(var(--danger) / 0.12)"; e.currentTarget.style.transform = "scale(1.05)"; }}
-                                      onMouseOut={(e) => { e.currentTarget.style.backgroundColor = "hsl(var(--danger) / 0.06)"; e.currentTarget.style.transform = "scale(1)"; }}
-                                    >
-                                      <Minus size={13} />
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showAddProviderModal && (
-        <div className="modal-overlay">
-          <div className="modal-content-window">
-            <header className="modal-header-section">
-              <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}><Sparkles size={18} style={{ color: "hsl(var(--primary))" }} /> 新增大模型供应商配置</h3>
-              <button className="modal-close-btn" onClick={() => setShowAddProviderModal(false)}>✕</button>
-            </header>
-
-            <div className="modal-body-section">
-              {/* 向导进度条 */}
-              <div className="wizard-stepper">
-                <div className={`step-item ${wizardStep === 1 ? "active" : ""} ${wizardStep > 1 ? "completed" : ""}`}>
-                  <span className="step-num">{wizardStep > 1 ? "✓" : "1"}</span>
-                  <span>基本信息</span>
-                </div>
-                <div className={`step-item ${wizardStep === 2 ? "active" : ""} ${wizardStep > 2 ? "completed" : ""}`}>
-                  <span className="step-num">{wizardStep > 2 ? "✓" : "2"}</span>
-                  <span>获取模型</span>
-                </div>
-                <div className={`step-item ${wizardStep === 3 ? "active" : ""} ${wizardStep > 3 ? "completed" : ""}`}>
-                  <span className="step-num">{wizardStep > 3 ? "✓" : "3"}</span>
-                  <span>选择模型</span>
-                </div>
-                <div className={`step-item ${wizardStep === 4 ? "active" : ""}`}>
-                  <span className="step-num">4</span>
-                  <span>完成</span>
-                </div>
-              </div>
-
-              {/* 步骤 1：录入 API 配置与协议选择 */}
-              {wizardStep === 1 && (
-                <div className="wizard-layout">
-                  <div className="left-step-col">
-                    <div className="form-group">
-                      <label>供应商名称</label>
-                      <input placeholder="e.g. Anthropic Claude" value={newProvName} onChange={(e) => setNewProvName(e.target.value)} />
-                    </div>
-
-                    <div className="form-group">
-                      <label>API 基础地址 (API URL)</label>
-                      <input placeholder="e.g. https://api.anthropic.com" value={newProvUrl} onChange={(e) => setNewProvUrl(e.target.value)} style={{ marginBottom: "4px" }} />
-                      {newProvUrl.trim() && (() => {
-                        const { discover, forward } = getUrlPreview(newProvUrl, newProvProtocol);
-                        return (
-                          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "2px", paddingLeft: "4px", marginTop: "2px", lineHeight: "1.4" }}>
-                            <div><span style={{ opacity: 0.6 }}>发现端点：</span><code style={{ fontSize: "0.68rem", color: "var(--text-secondary)" }}>{discover}</code></div>
-                            <div><span style={{ opacity: 0.6 }}>对话转发：</span><code style={{ fontSize: "0.68rem", color: "var(--text-secondary)" }}>{forward}</code></div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="form-group">
-                      <label>API 授权密钥 (API Key)</label>
-                      <input type="password" placeholder="sk-..." value={newProvKey} onChange={(e) => setNewProvKey(e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div className="right-step-col">
-                    <label style={{ fontSize: "0.8rem", fontWeight: "600", color: "hsl(var(--text-secondary))", display: "block", marginBottom: "8px" }}>协议类型选择</label>
-                    <div className="protocol-grid">
-                      <div className={`protocol-card ${newProvProtocol === "claude" ? "active" : ""}`} onClick={() => setNewProvProtocol("claude")} style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                        <span style={{ fontSize: "1.3rem", display: "flex", alignItems: "center", color: "hsl(var(--primary))" }}><Activity size={18} /></span>
-                        <div>
-                          <h4>Claude 协议</h4>
-                          <p>协议组：兼容 Anthropic 原生消息请求格式</p>
-                        </div>
-                      </div>
-                      <div className={`protocol-card ${newProvProtocol === "codex_responses" ? "active" : ""}`} onClick={() => setNewProvProtocol("codex_responses")} style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                        <span style={{ fontSize: "1.3rem", display: "flex", alignItems: "center", color: "hsl(var(--secondary))" }}><Terminal size={18} /></span>
-                        <div>
-                          <h4>Codex /responses 协议</h4>
-                          <p>协议组：兼容 Copilot Responses 物理转发</p>
-                        </div>
-                      </div>
-                      <div className={`protocol-card ${newProvProtocol === "codex_chat" ? "active" : ""}`} onClick={() => setNewProvProtocol("codex_chat")} style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                        <span style={{ fontSize: "1.3rem", display: "flex", alignItems: "center", color: "hsl(var(--success))" }}><Share2 size={18} /></span>
-                        <div>
-                          <h4>Codex /chat 协议</h4>
-                          <p>协议组：兼容 OpenAI Chat Completions 规范</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 步骤 2：获取模型状态 */}
-              {wizardStep === 2 && (
-                <div>
-                  {isFetchingModels ? (
-                    <div style={{ padding: "40px 0", textAlign: "center" }}>
-                      <h4 style={{ marginBottom: "16px", color: "hsl(var(--primary))" }}>正在从 {newProvUrl}/models 获取可用大模型矩阵...</h4>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "600px", margin: "0 auto" }}>
-                        <div className="skeleton-row"></div>
-                        <div className="skeleton-row"></div>
-                        <div className="skeleton-row"></div>
-                        <div className="skeleton-row"></div>
-                      </div>
-                    </div>
-                  ) : fetchModelsError ? (
-                    <div style={{ padding: "30px 24px", borderRadius: "12px", border: "1px solid hsl(var(--danger) / 0.2)", backgroundColor: "hsl(var(--danger) / 0.05)", color: "hsl(var(--danger))", display: "flex", flexDirection: "column", gap: "14px", maxWidth: "620px", margin: "20px auto" }}>
-                      <div style={{ display: "flex", alignItems: "start", gap: "12px" }}>
-                        <Info size={20} style={{ flexShrink: 0, marginTop: "2px", color: "hsl(var(--danger))" }} />
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: 0, flex: 1 }}>
-                          <h4 style={{ fontWeight: 700, fontSize: "0.95rem", color: "hsl(var(--text-primary))", margin: 0 }}>获取模型接口失败 / 超时</h4>
-                          <p style={{ fontSize: "0.78rem", color: "hsl(var(--text-secondary))", lineHeight: "1.5", margin: 0 }}>
-                            部分中转代理或专用网关不提供标准的 `/models` 发现接口。您可以选择直接完成供应商创建，稍后可在模型列表中手动添加模型。
-                          </p>
-                          <div style={{ fontSize: "0.74rem", fontFamily: "var(--font-mono)", backgroundColor: "rgba(0,0,0,0.15)", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.04)", color: "hsl(var(--text-primary))", marginTop: "10px", wordBreak: "break-all", whiteSpace: "pre-wrap" }}>
-                            错误详情：{fetchModelsError}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "14px", marginTop: "4px" }}>
-                        <button className="btn-secondary" onClick={() => { setWizardStep(1); setFetchModelsError(null); }} style={{ padding: "0 14px", height: "36px", fontSize: "0.8rem", borderRadius: "8px" }}>
-                          返回修改 API 信息
-                        </button>
-                        <button className="btn-secondary" onClick={handleFetchModels} style={{ padding: "0 14px", height: "36px", fontSize: "0.8rem", borderRadius: "8px", borderColor: "hsl(var(--primary) / 0.3)", color: "hsl(var(--primary))" }}>
-                          重试获取
-                        </button>
-                        <button className="btn-primary" onClick={handleSaveProviderOnly} style={{ padding: "0 14px", height: "36px", fontSize: "0.8rem", borderRadius: "8px" }}>
-                          直接完成创建 (不拉取模型)
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-
-              {/* 步骤 3：获取到的模型选择列表 */}
-              {wizardStep === 3 && (() => {
-                const totalCount = fetchedModels.length;
-                const hasAnyCaps = fetchedModels.some(m =>
-                  m.cap_reasoning || m.cap_vision || m.cap_tools || m.cap_embedding || m.cap_reranking || m.cap_long_context
-                );
-                const filteredCount = fetchedModels.filter(m => {
-                  if (wizardSearchQuery.trim()) {
-                    const q = wizardSearchQuery.toLowerCase();
-                    if (!m.name.toLowerCase().includes(q) && !(m.display_name || "").toLowerCase().includes(q)) return false;
-                  }
-                  if (hasAnyCaps && wizardFeatureTab !== "all") {
-                    switch (wizardFeatureTab) {
-                      case "reasoning":  return !!m.cap_reasoning;
-                      case "vision":     return !!m.cap_vision;
-                      case "tools":      return !!m.cap_tools;
-                      case "embedding":  return !!m.cap_embedding;
-                      case "reranking":  return !!m.cap_reranking;
-                      case "long_ctx":   return !!m.cap_long_context;
-                      default:           return true;
-                    }
-                  }
-                  return true;
-                }).length;
-                const isFiltered = wizardSearchQuery.trim().length > 0 || (hasAnyCaps && wizardFeatureTab !== "all");
-                const displayCount = isFiltered ? `${filteredCount}/${totalCount}` : `${totalCount}`;
-
-                return (
-                  <div>
-                    <div style={{ marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                          <h4 style={{ fontSize: "0.92rem", fontWeight: "700", margin: 0 }}>模型列表发现成功</h4>
-                          <span style={{ 
-                            fontSize: "0.74rem", 
-                            fontWeight: 600, 
-                            padding: "2px 8px", 
-                            borderRadius: "6px", 
-                            backgroundColor: "hsl(var(--primary) / 0.1)", 
-                            color: "hsl(var(--primary))"
-                          }}>
-                            {displayCount}
-                          </span>
-                        </div>
-                        <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>来自上游大模型端点解析的全部活跃模型</p>
-                      </div>
-                    </div>
-                    {renderModelPullingInterface(
-                      fetchedModels,
-                      wizardSearchQuery,
-                      setWizardSearchQuery,
-                      isFetchingModels,
-                      handleFetchModels,
-                      selectedFetchedModelNames,
-                      (name, isAdded) => {
-                        if (isAdded) {
-                          setSelectedFetchedModelNames(prev => prev.filter(n => n !== name));
-                        } else {
-                          setSelectedFetchedModelNames(prev => [...prev, name]);
-                        }
-                      },
-                      () => {
-                        const filtered = fetchedModels.filter(m => {
-                          if (wizardSearchQuery.trim()) {
-                            const q = wizardSearchQuery.toLowerCase();
-                            if (!m.name.toLowerCase().includes(q) && !(m.display_name || "").toLowerCase().includes(q)) return false;
-                          }
-                          if (hasAnyCaps && wizardFeatureTab !== "all") {
-                            switch (wizardFeatureTab) {
-                              case "reasoning":  return !!m.cap_reasoning;
-                              case "vision":     return !!m.cap_vision;
-                              case "tools":      return !!m.cap_tools;
-                              case "embedding":  return !!m.cap_embedding;
-                              case "reranking":  return !!m.cap_reranking;
-                              case "long_ctx":   return !!m.cap_long_context;
-                              default:           return true;
-                            }
-                          }
-                          return true;
-                        });
-                        setSelectedFetchedModelNames(filtered.map(m => m.name));
-                      },
-                      wizardFeatureTab,
-                      setWizardFeatureTab
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* 向导底部控制按钮 */}
-              {!isFetchingModels && !fetchModelsError && (
-                <div className="wizard-footer">
-                  {wizardStep > 1 && wizardStep !== 4 ? (
-                    <button className="btn-secondary" onClick={() => { setWizardStep(wizardStep - 1); setFetchModelsError(null); }}>上一步</button>
-                  ) : (
-                    <div></div>
-                  )}
-                  
-                  {wizardStep === 1 && (
-                    <div style={{ display: "flex", gap: "10px" }}>
-                      <button className="btn-secondary" onClick={handleSaveProviderOnly} style={{ padding: "0 18px", height: "40px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: 600 }}>
-                        直接完成创建
-                      </button>
-                      <button className="btn-primary" onClick={handleFetchModels}>下一步 (发现模型) &nbsp; <ChevronRight size={15} /></button>
-                    </div>
-                  )}
-                  {wizardStep === 3 && (
-                    <button className="btn-primary" onClick={handleAddProviderSubmit}><Check size={16} /> 一键全部导入添加</button>
-                  )}
-                </div>
-              )}
-
-              {/* 正在拉取模型时的底部控制 */}
-              {isFetchingModels && (
-                <div className="wizard-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <button className="btn-secondary" disabled style={{ opacity: 0.5, cursor: "not-allowed" }}>上一步</button>
-                  <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <RotateCw size={12} className="anim-spin" /> 正在发现上游模型...
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================================
-          MODAL: 拉取上游模型弹窗 (如图一)
-         ============================================================================ */}
-      {showPullModal && selectedProviderForDetails && (() => {
-        const totalCount = fetchedModelsForPull.length;
-        const filteredCount = fetchedModelsForPull.filter(m => {
-          if (pullSearchQuery.trim()) {
-            const q = pullSearchQuery.toLowerCase();
-            if (!m.name.toLowerCase().includes(q) && !(m.display_name || "").toLowerCase().includes(q)) {
-              return false;
-            }
-          }
-          return true;
-        }).length;
-        const isFiltered = pullSearchQuery.trim().length > 0;
-        const displayCount = isFiltered ? `${filteredCount}/${totalCount}` : `${totalCount}`;
-
-        return (
-          <div className="modal-overlay" style={{ zIndex: 1100 }}>
-            <div className="modal-content-window" style={{ maxWidth: "640px", width: "90%", display: "flex", flexDirection: "column", padding: "24px" }}>
-              <header className="modal-header-section" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.1rem", margin: 0 }}>
-                    {selectedProviderForDetails.name}模型
-                  </h3>
-                  <span style={{ 
-                    fontSize: "0.78rem", 
-                    fontWeight: 600, 
-                    padding: "2px 8px", 
-                    borderRadius: "6px", 
-                    backgroundColor: "hsl(var(--primary) / 0.1)", 
-                    color: "hsl(var(--primary))"
-                  }}>
-                    {displayCount}
-                  </span>
-                </div>
-                <button
-                  style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}
-                  onClick={() => setShowPullModal(false)}
-                >
-                  <X size={15} />
-                </button>
-              </header>
-            
-            {renderModelPullingInterface(
-              fetchedModelsForPull,
-              pullSearchQuery,
-              setPullSearchQuery,
-              isSyncingModels,
-              async () => {
-                setIsSyncingModels(true);
-                try {
-                  const result = await invoke<Model[]>("discover_models", {
-                    apiUrl: selectedProviderForDetails.api_url,
-                    apiKey: selectedProviderForDetails.api_key,
-                    protocol: selectedProviderForDetails.protocol,
-                    providerId: selectedProviderForDetails.id,
-                  });
-                  setFetchedModelsForPull(result);
-                } catch (err) {
-                  alert("拉取模型失败: " + err);
-                } finally {
-                  setIsSyncingModels(false);
-                }
-              },
-              models.filter(m => m.provider_id === selectedProviderForDetails.id).map(m => m.name),
-              async (name, isAdded) => {
-                try {
-                  if (isAdded) {
-                    const targetModel = models.find(m => m.provider_id === selectedProviderForDetails.id && m.name === name);
-                    if (targetModel) {
-                      await handleDeleteModel(targetModel.id);
-                    }
-                  } else {
-                    await invoke("add_models_to_provider", {
-                      providerId: selectedProviderForDetails.id,
-                      modelNames: [name],
-                    });
-                    const modList = await invoke<Model[]>("get_models", { providerId: selectedProviderForDetails.id });
-                    setModels(modList);
-                    await loadData();
-                  }
-                } catch (err) {
-                  console.error("操作模型失败:", err);
-                }
-              },
-              async () => {
-                try {
-                  const existingNames = models.filter(m => m.provider_id === selectedProviderForDetails.id).map(m => m.name);
-                  const hasAnyCapabilities = fetchedModelsForPull.some(m =>
-                    m.cap_reasoning || m.cap_vision || m.cap_tools || m.cap_embedding || m.cap_reranking || m.cap_long_context
-                  );
-                  const filtered = fetchedModelsForPull.filter(m => {
-                    if (pullSearchQuery.trim()) {
-                      const q = pullSearchQuery.toLowerCase();
-                      if (!m.name.toLowerCase().includes(q) && !(m.display_name || "").toLowerCase().includes(q)) return false;
-                    }
-                    if (hasAnyCapabilities && pullFeatureTab !== "all") {
-                      switch (pullFeatureTab) {
-                        case "reasoning":  return !!m.cap_reasoning;
-                        case "vision":     return !!m.cap_vision;
-                        case "tools":      return !!m.cap_tools;
-                        case "embedding":  return !!m.cap_embedding;
-                        case "reranking":  return !!m.cap_reranking;
-                        case "long_ctx":   return !!m.cap_long_context;
-                        default:           return true;
-                      }
-                    }
-                    return true;
-                  });
-                  const newNames = filtered.map(m => m.name).filter(name => !existingNames.includes(name));
-                  if (newNames.length > 0) {
-                    await invoke("add_models_to_provider", {
-                      providerId: selectedProviderForDetails.id,
-                      modelNames: newNames,
-                    });
-                    const modList = await invoke<Model[]>("get_models", { providerId: selectedProviderForDetails.id });
-                    setModels(modList);
-                    await loadData();
-                  }
-                } catch (err) {
-                  console.error("一键全部添加失败:", err);
-                }
-              },
-              pullFeatureTab,
-              setPullFeatureTab
-            )}
-          </div>
-        </div>
-      )})()}
+      <PullModal
+        showPullModal={showPullModal}
+        setShowPullModal={setShowPullModal}
+        selectedProviderForDetails={selectedProviderForDetails}
+        fetchedModelsForPull={fetchedModelsForPull}
+        setFetchedModelsForPull={setFetchedModelsForPull}
+        pullSearchQuery={pullSearchQuery}
+        setPullSearchQuery={setPullSearchQuery}
+        isSyncingModels={isSyncingModels}
+        setIsSyncingModels={setIsSyncingModels}
+        pullFeatureTab={pullFeatureTab}
+        setPullFeatureTab={setPullFeatureTab}
+        models={models}
+        setModels={setModels}
+        handleDeleteModel={handleDeleteModel}
+        loadData={loadData}
+      />
     </div>
   );
 }
