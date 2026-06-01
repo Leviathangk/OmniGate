@@ -66,8 +66,8 @@ pub struct UsageOverview {
     pub active_skills: usize,
     pub today_requests: usize,
     pub today_requests_growth: String,
-    pub today_tokens: String,
-    pub today_tokens_growth: String,
+    pub today_avg_latency: String,
+    pub today_success_rate: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -299,6 +299,9 @@ pub fn get_usage_overview(
     let (total_models, active_models) = state.db.count_models()?;
     let (total_skills, active_skills) = state.db.count_skills()?;
 
+    let (today_req, growth, avg_lat, succ_rate) = state.db.get_today_metrics()
+        .unwrap_or((0, "0%".to_string(), "0 ms".to_string(), "100%".to_string()));
+
     Ok(UsageOverview {
         total_providers,
         active_providers,
@@ -306,10 +309,10 @@ pub fn get_usage_overview(
         active_models,
         total_skills,
         active_skills,
-        today_requests: 0,
-        today_requests_growth: "0%".to_string(),
-        today_tokens: "0".to_string(),
-        today_tokens_growth: "0%".to_string(),
+        today_requests: today_req,
+        today_requests_growth: growth,
+        today_avg_latency: avg_lat,
+        today_success_rate: succ_rate,
     })
 }
 

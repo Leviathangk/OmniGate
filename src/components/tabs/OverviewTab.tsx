@@ -69,9 +69,9 @@ export function OverviewTab({
         <div className="stat-card orange">
           <div className="stat-icon-container"><Hash size={20} /></div>
           <div className="stat-info">
-            <p>今日消耗 Tokens</p>
-            <h3>{overviewData.today_tokens}</h3>
-            <div className="stat-sub">较昨日: <strong>{overviewData.today_tokens_growth}</strong></div>
+            <p>平均响应延迟</p>
+            <h3>{overviewData.today_avg_latency}</h3>
+            <div className="stat-sub">今日成功率: <strong>{overviewData.today_success_rate}</strong></div>
           </div>
         </div>
       </div>

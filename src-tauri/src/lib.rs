@@ -51,6 +51,8 @@ pub fn run() {
                             let (total_models, active_models) = db_for_events.count_models().unwrap_or((0, 0));
                             let (total_skills, active_skills) = db_for_events.count_skills().unwrap_or((0, 0));
                             
+                            let (today_req, growth, avg_lat, succ_rate) = db_for_events.get_today_metrics().unwrap_or((0, "0%".to_string(), "0 ms".to_string(), "100%".to_string()));
+                            
                             let overview = serde_json::json!({
                                 "total_providers": total_providers,
                                 "active_providers": active_providers,
@@ -58,10 +60,10 @@ pub fn run() {
                                 "active_models": active_models,
                                 "total_skills": total_skills,
                                 "active_skills": active_skills,
-                                "today_requests": 0,
-                                "today_requests_growth": "0%",
-                                "today_tokens": "0",
-                                "today_tokens_growth": "0%"
+                                "today_requests": today_req,
+                                "today_requests_growth": growth,
+                                "today_avg_latency": avg_lat,
+                                "today_success_rate": succ_rate
                             });
 
                             if let (Ok(traffic), Ok(recent), Ok(model_usage), Ok(heatmap)) = (

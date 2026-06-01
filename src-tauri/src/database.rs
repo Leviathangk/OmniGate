@@ -129,6 +129,57 @@ impl DbManager {
         Ok(())
     }
 
+    pub fn get_today_metrics(&self) -> Result<(usize, String, String, String), String> {
+        let conn = self.conn.lock().unwrap();
+        
+        let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+        let yesterday_start = today_start - 86400;
+
+        // Today stats
+        let mut today_count: i64 = 0;
+        let mut today_avg_latency: f64 = 0.0;
+        let mut today_success_count: i64 = 0;
+
+        let _ = conn.query_row(
+            "SELECT COUNT(*) as count, AVG(latency_ms) as avg_latency, SUM(CASE WHEN status_code < 400 THEN 1 ELSE 0 END) as success_count FROM usage_statistics WHERE created_at >= ?1",
+            rusqlite::params![today_start],
+            |row| {
+                today_count = row.get(0).unwrap_or(0);
+                today_avg_latency = row.get(1).unwrap_or(0.0);
+                today_success_count = row.get(2).unwrap_or(0);
+                Ok(())
+            }
+        );
+
+        // Yesterday stats
+        let mut yest_count: i64 = 0;
+        let _ = conn.query_row(
+            "SELECT COUNT(*) as count FROM usage_statistics WHERE created_at >= ?1 AND created_at < ?2",
+            rusqlite::params![yesterday_start, today_start],
+            |row| {
+                yest_count = row.get(0).unwrap_or(0);
+                Ok(())
+            }
+        );
+
+        let growth = if yest_count == 0 {
+            if today_count == 0 { "0%".to_string() } else { "+100%".to_string() }
+        } else {
+            let diff = today_count as f64 - yest_count as f64;
+            let percent = (diff / yest_count as f64) * 100.0;
+            if percent >= 0.0 { format!("+{:.1}%", percent) } else { format!("{:.1}%", percent) }
+        };
+
+        let latency_str = if today_count == 0 { "0 ms".to_string() } else { format!("{} ms", today_avg_latency as i64) };
+        let success_rate = if today_count == 0 {
+            "100%".to_string()
+        } else {
+            format!("{:.1}%", (today_success_count as f64 / today_count as f64) * 100.0)
+        };
+
+        Ok((today_count as usize, growth, latency_str, success_rate))
+    }
+
     pub fn get_today_traffic_trend(&self) -> Result<Vec<TrafficPoint>, String> {
         let conn = self.conn.lock().unwrap();
         // Today from 00:00 to 23:59

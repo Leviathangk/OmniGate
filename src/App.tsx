@@ -126,8 +126,8 @@ interface UsageOverview {
   active_models: number;
   today_requests: number;
   today_requests_growth: string;
-  today_tokens: string;
-  today_tokens_growth: string;
+  today_avg_latency: string;
+  today_success_rate: string;
 }
 
 
@@ -684,7 +684,7 @@ function App() {
     total_providers: 0, active_providers: 0,
     total_models: 0, active_models: 0,
     today_requests: 0, today_requests_growth: "+0%",
-    today_tokens: "0", today_tokens_growth: "+0%"
+    today_avg_latency: "0 ms", today_success_rate: "100%"
   });
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<Model[]>([]);
