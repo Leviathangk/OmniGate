@@ -15,8 +15,8 @@
         "title": "OmniGate",
         "width": 1472,
         "height": 947,
-        "minWidth": 1472,
-        "minHeight": 947
+        "minWidth": 1380,
+        "minHeight": 840
       }
     ],
     "security": {

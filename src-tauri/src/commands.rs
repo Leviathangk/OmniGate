@@ -160,17 +160,21 @@ pub fn check_provider_usage(id: String, state: tauri::State<'_, crate::AppState>
 }
 
 #[tauri::command]
-pub fn cascade_delete_provider(id: String, state: tauri::State<'_, crate::AppState>) -> Result<(), String> {
+pub fn cascade_delete_provider(
+    id: String,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
     let usage = state.db.get_provider_usage(&id)?;
 
     // 1. Process Direct clients
     for client_id in usage.direct_clients {
         match client_id.as_str() {
             "opencode" => {
-                let _ = remove_opencode_direct_provider(id.clone());
+                let _ = remove_opencode_direct_provider(id.clone(), app_handle.clone());
             },
             "claude" => {
-                let _ = restore_claude_config();
+                let _ = restore_claude_config(app_handle.clone());
             },
             "codex" => {
                 let _ = restore_codex_config();
@@ -401,22 +405,25 @@ pub async fn discover_models(
 
 use std::fs;
 use std::path::PathBuf;
+use tauri::Manager;
 use toml_edit::{DocumentMut, value, Item, Table};
 
 use crate::database::{TrafficPoint, RecentActivity, ModelUsage, HeatmapData};
 
+fn get_user_home_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app_handle
+        .path()
+        .home_dir()
+        .map_err(|_| "Could not find home directory".to_string())
+}
 
-fn get_codex_dir() -> PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".codex")
-    } else {
-        PathBuf::from("/Users/guokai/.codex")
-    }
+fn get_codex_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(get_user_home_dir(app_handle)?.join(".codex"))
 }
 
 #[tauri::command]
-pub fn get_codex_provider_name() -> Result<Option<String>, String> {
-    let temp_dir = get_codex_dir();
+pub fn get_codex_provider_name(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+    let temp_dir = get_codex_dir(&app_handle)?;
     let config_path = temp_dir.join("config.toml");
     if !config_path.exists() {
         return Ok(None);
@@ -437,13 +444,14 @@ pub fn hijack_codex_config(
     provider_name: String, 
     base_url: String, 
     proxy_api_key: String,
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>
 ) -> Result<(), String> {
     if !state.proxy_running.load(std::sync::atomic::Ordering::SeqCst) {
         return Err("端口 3456 已被占用，网关服务启动失败！请尝试释放该端口（例如旧版的 OmniGate 残留）后重启客户端。".to_string());
     }
 
-    let temp_dir = get_codex_dir();
+    let temp_dir = get_codex_dir(&app_handle)?;
     if !temp_dir.exists() {
         fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
     }
@@ -506,12 +514,8 @@ pub fn restore_codex_config() -> Result<(), String> {
 // OpenCode 本地接管
 // ============================================================================
 
-fn get_opencode_config_dir() -> PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".config").join("opencode")
-    } else {
-        PathBuf::from("/tmp/opencode")
-    }
+fn get_opencode_config_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(get_user_home_dir(app_handle)?.join(".config").join("opencode"))
 }
 
 /// 将 HashMap<model_name, model_name> 序列化为 opencode 的 models 字典格式：
@@ -527,13 +531,14 @@ fn build_opencode_models_dict(model_names: &std::collections::HashSet<String>) -
 #[tauri::command]
 pub fn hijack_opencode_config(
     proxy_api_key: String,
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     if !state.proxy_running.load(std::sync::atomic::Ordering::SeqCst) {
         return Err("端口 3456 已被占用，网关服务启动失败！请尝试释放该端口（例如旧版的 OmniGate 残留）后重启客户端。".to_string());
     }
 
-    let opencode_dir = get_opencode_config_dir();
+    let opencode_dir = get_opencode_config_dir(&app_handle)?;
     if !opencode_dir.exists() {
         fs::create_dir_all(&opencode_dir).map_err(|e| e.to_string())?;
     }
@@ -635,8 +640,8 @@ pub fn hijack_opencode_config(
 }
 
 #[tauri::command]
-pub fn restore_opencode_config() -> Result<(), String> {
-    let opencode_dir = get_opencode_config_dir();
+pub fn restore_opencode_config(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let opencode_dir = get_opencode_config_dir(&app_handle)?;
     let config_path = opencode_dir.join("opencode.json");
 
     if config_path.exists() {
@@ -661,24 +666,21 @@ pub fn restore_opencode_config() -> Result<(), String> {
 // Claude Configuration Hijack
 // ============================================================================
 
-fn get_claude_config_dir() -> std::path::PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        std::path::PathBuf::from(home).join(".claude")
-    } else {
-        std::path::PathBuf::from(".claude")
-    }
+fn get_claude_config_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(get_user_home_dir(app_handle)?.join(".claude"))
 }
 
 #[tauri::command]
 pub fn hijack_claude_config(
     proxy_api_key: String,
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     if !state.proxy_running.load(std::sync::atomic::Ordering::SeqCst) {
         return Err("端口 3456 已被占用，网关服务启动失败！请尝试释放该端口（例如旧版的 OmniGate 残留）后重启客户端。".to_string());
     }
 
-    let claude_dir = get_claude_config_dir();
+    let claude_dir = get_claude_config_dir(&app_handle)?;
     if !claude_dir.exists() {
         fs::create_dir_all(&claude_dir).map_err(|e| e.to_string())?;
     }
@@ -709,8 +711,8 @@ pub fn hijack_claude_config(
 }
 
 #[tauri::command]
-pub fn restore_claude_config() -> Result<(), String> {
-    let claude_dir = get_claude_config_dir();
+pub fn restore_claude_config(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let claude_dir = get_claude_config_dir(&app_handle)?;
     let config_path = claude_dir.join("settings.json");
 
     if config_path.exists() {
@@ -837,10 +839,9 @@ pub fn get_heatmap_data(state: tauri::State<'_, crate::AppState>) -> Result<Vec<
 // ============================================================================
 // Global System Prompt File Management
 // ============================================================================
-use tauri::Manager;
 
 fn get_cli_prompt_path(app_handle: &tauri::AppHandle, client_id: &str) -> Result<std::path::PathBuf, String> {
-    let home_dir = app_handle.path().home_dir().map_err(|_| "Could not find home directory")?;
+    let home_dir = get_user_home_dir(app_handle)?;
     let path = match client_id {
         "claude" => home_dir.join(".claude").join("CLAUDE.md"),
         "opencode" => home_dir.join(".config").join("opencode").join("AGENTS.md"),
@@ -889,17 +890,16 @@ pub fn write_external_prompt(client_id: String, content: String, app_handle: tau
 pub fn apply_direct_config(
     client_id: String,
     provider_id: String,
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     let providers = state.db.get_all_providers().map_err(|e| e.to_string())?;
     let provider = providers.into_iter().find(|p| p.id == provider_id)
         .ok_or_else(|| "Provider not found".to_string())?;
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    
     match client_id.as_str() {
         "claude" => {
-            let claude_dir = std::path::PathBuf::from(&home).join(".claude");
+            let claude_dir = get_claude_config_dir(&app_handle)?;
             if !claude_dir.exists() {
                 std::fs::create_dir_all(&claude_dir).map_err(|e| e.to_string())?;
             }
@@ -928,7 +928,7 @@ pub fn apply_direct_config(
             std::fs::write(&config_path, out).map_err(|e| e.to_string())?;
         },
         "codex" => {
-            let codex_dir = std::path::PathBuf::from(&home).join(".codex");
+            let codex_dir = get_codex_dir(&app_handle)?;
             if !codex_dir.exists() {
                 std::fs::create_dir_all(&codex_dir).map_err(|e| e.to_string())?;
             }
@@ -984,7 +984,7 @@ pub fn apply_direct_config(
             std::fs::write(&auth_path, serde_json::to_string_pretty(&auth_doc).unwrap()).map_err(|e| e.to_string())?;
         },
         "opencode" => {
-            let opencode_dir = std::path::PathBuf::from(&home).join(".config").join("opencode");
+            let opencode_dir = get_opencode_config_dir(&app_handle)?;
             if !opencode_dir.exists() {
                 std::fs::create_dir_all(&opencode_dir).map_err(|e| e.to_string())?;
             }
@@ -1054,9 +1054,8 @@ pub fn apply_direct_config(
 }
 
 #[tauri::command]
-pub fn get_opencode_direct_providers() -> Result<Vec<String>, String> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
-    let opencode_dir = std::path::PathBuf::from(&home).join(".config").join("opencode");
+pub fn get_opencode_direct_providers(app_handle: tauri::AppHandle) -> Result<Vec<String>, String> {
+    let opencode_dir = get_opencode_config_dir(&app_handle)?;
     let config_path = opencode_dir.join("opencode.json");
     if !config_path.exists() {
         return Ok(vec![]);
@@ -1078,9 +1077,11 @@ pub fn get_opencode_direct_providers() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn remove_opencode_direct_provider(provider_id: String) -> Result<(), String> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
-    let opencode_dir = std::path::PathBuf::from(&home).join(".config").join("opencode");
+pub fn remove_opencode_direct_provider(
+    provider_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let opencode_dir = get_opencode_config_dir(&app_handle)?;
     let config_path = opencode_dir.join("opencode.json");
     if !config_path.exists() {
         return Ok(());
