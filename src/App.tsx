@@ -29,6 +29,9 @@ import {
   RotateCw,
   AlertTriangle,
   FileText,
+  AlertCircle,
+  X,
+  Trash2
 } from "lucide-react";
 import "./App.css";
 // recharts removed
@@ -643,6 +646,10 @@ function App() {
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [darkMode, setDarkMode] = useState<boolean>(true);
 
+  // 删除供应商确认 Modal 状态
+  const [providerToDelete, setProviderToDelete] = useState<string | null>(null);
+  const [deleteWarningMsg, setDeleteWarningMsg] = useState<string>("");
+
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -1187,15 +1194,59 @@ function App() {
     }
   };
 
-  // 删除供应商
+  // 删除供应商 - 触发确认弹窗
   const handleDeleteProvider = async (id: string) => {
-    if (!confirm("确认删除此供应商？关联的模型也将被删除。")) return;
     try {
-      await invoke("delete_provider", { id });
-      setProviders(prev => prev.filter(p => p.id !== id));
-      await loadData(); // 刷新统计数据
+      const usage = await invoke<{ proxy_clients: string[], direct_clients: string[] }>("check_provider_usage", { id });
+      
+      let warningMsg = "";
+      if (usage.proxy_clients.length > 0) {
+        warningMsg += `代理模式: ${usage.proxy_clients.join(", ")}\n`;
+      }
+      if (usage.direct_clients.length > 0) {
+        warningMsg += `直连模式: ${usage.direct_clients.join(", ")}\n`;
+      }
+      
+      setDeleteWarningMsg(warningMsg);
+      setProviderToDelete(id);
     } catch (err) {
+      alert("⚠️ 获取使用情况失败: " + String(err));
+      console.error("检查供应商使用情况失败:", err);
+    }
+  };
+
+  // 确认彻底删除供应商
+  const confirmDeleteProvider = async () => {
+    const id = providerToDelete;
+    if (!id) return;
+    setProviderToDelete(null);
+    setDeleteWarningMsg("");
+
+    try {
+      const usage = await invoke<{ proxy_clients: string[], direct_clients: string[] }>("check_provider_usage", { id });
+      
+      await invoke("cascade_delete_provider", { id });
+      setProviders(prev => prev.filter(p => p.id !== id));
+      await loadData(); // 刷新统计数据和 clientConfigs
+      
+      // 如果有代理客户端被移除，并且其开关仍处于开启状态，重新写入代理配置以刷新模型列表
+      if (usage.proxy_clients.length > 0) {
+        if (usage.proxy_clients.includes("claude") && clientConfigs.find(c => c.client_id === "claude")?.is_enabled) {
+          invoke("hijack_claude_config", { proxyApiKey: hijackApiKey || "sk-omnigate-fallback" }).catch(() => {});
+        }
+        if (usage.proxy_clients.includes("codex") && clientConfigs.find(c => c.client_id === "codex")?.is_enabled) {
+          invoke("hijack_codex_config", { providerName: hijackProviderName || "custom", baseUrl: hijackBaseUrl || "http://127.0.0.1:3456", proxyApiKey: hijackApiKey || "sk-omnigate-fallback" }).catch(() => {});
+        }
+        if (usage.proxy_clients.some(c => c.startsWith("opencode")) && clientConfigs.find(c => c.client_id === "opencode")?.is_enabled) {
+          invoke("hijack_opencode_config", { proxyApiKey: hijackApiKey || "sk-omnigate-fallback" }).catch(() => {});
+        }
+      }
+      
+      showToast("供应商已彻底删除并清理完毕", "success");
+    } catch (err) {
+      alert("⚠️ 底层报错了: " + String(err));
       console.error("删除供应商失败:", err);
+      showToast("删除供应商失败: " + err, "error");
     }
   };
 
@@ -1881,6 +1932,62 @@ function App() {
               handleOpenModelMapping={handleOpenModelMapping}
               handleDeleteProvider={handleDeleteProvider}
             />
+          )}
+
+          {/* ============================================================================
+              MODALS: 供应商删除确认
+             ============================================================================ */}
+          {providerToDelete && (
+            <div className="modal-overlay">
+              <div className="modal-content-window" style={{ maxWidth: "450px" }} onClick={e => e.stopPropagation()}>
+                <header className="modal-header-section" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px", flexShrink: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "linear-gradient(135deg, hsl(var(--danger)), #ef4444)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <AlertCircle size={16} style={{ color: "#fff" }} />
+                    </div>
+                    <div>
+                      <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1rem", margin: 0, color: "hsl(var(--danger))" }}>
+                        确认删除供应商
+                      </h3>
+                      <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontFamily: "monospace" }}>
+                        危险操作，无法撤销
+                      </span>
+                    </div>
+                  </div>
+                  <button 
+                    className="icon-btn" 
+                    style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}
+                    onClick={() => setProviderToDelete(null)}>
+                    <X size={15} />
+                  </button>
+                </header>
+                <div className="modal-body-section" style={{ display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", padding: "14px 20px", flex: 1 }}>
+                  <p style={{ margin: 0, color: "var(--text-primary)", fontSize: "0.85rem", lineHeight: "1.5" }}>
+                    您确定要永久删除此供应商吗？其关联的所有模型信息也将被一并彻底清除。
+                  </p>
+                  {deleteWarningMsg && (
+                    <div className="github-alert warning" style={{ marginTop: "8px", padding: "12px", borderRadius: "8px", backgroundColor: "hsl(var(--warning) / 0.1)", border: "1px solid hsl(var(--warning) / 0.3)" }}>
+                      <div className="alert-title" style={{ color: "hsl(var(--warning))", fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: "0.85rem" }}>
+                        ⚠️ 此供应商正在被以下客户端使用：
+                      </div>
+                      <pre style={{ margin: 0, padding: 0, background: 'transparent', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-secondary)', fontSize: "0.8rem", fontFamily: "monospace" }}>
+                        {deleteWarningMsg}
+                      </pre>
+                      <p style={{ marginTop: "8px", marginBottom: 0, fontSize: "0.8rem", color: "hsl(var(--warning))" }}>
+                        继续删除将自动从这些客户端中解除绑定并卸载配置（包含还原）。
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div style={{ marginTop: "24px", display: "flex", gap: "10px", justifyContent: "flex-end", padding: "0 20px 20px 20px" }}>
+                  <button className="btn-secondary" onClick={() => setProviderToDelete(null)}>取消</button>
+                  <button className="btn-primary" style={{ backgroundColor: "hsl(var(--danger))", borderColor: "hsl(var(--danger))" }} onClick={confirmDeleteProvider}>
+                    <Trash2 size={15} style={{ marginRight: '6px' }}/>
+                    彻底删除
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* ============================================================================

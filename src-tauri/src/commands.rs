@@ -155,6 +155,40 @@ pub fn update_provider_info(
 }
 
 #[tauri::command]
+pub fn check_provider_usage(id: String, state: tauri::State<'_, crate::AppState>) -> Result<crate::database::ProviderUsageReport, String> {
+    state.db.get_provider_usage(&id)
+}
+
+#[tauri::command]
+pub fn cascade_delete_provider(id: String, state: tauri::State<'_, crate::AppState>) -> Result<(), String> {
+    let usage = state.db.get_provider_usage(&id)?;
+
+    // 1. Process Direct clients
+    for client_id in usage.direct_clients {
+        match client_id.as_str() {
+            "opencode" => {
+                let _ = remove_opencode_direct_provider(id.clone());
+            },
+            "claude" => {
+                let _ = restore_claude_config();
+            },
+            "codex" => {
+                let _ = restore_codex_config();
+            },
+            _ => {}
+        }
+    }
+
+    // 2. Clear direct/manual provider references in DB
+    state.db.clear_provider_references(&id)?;
+
+    // 3. Delete from DB (cascades to proxy lists)
+    state.db.delete_provider(&id)?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn delete_provider(
     id: String,
     state: tauri::State<'_, crate::AppState>,

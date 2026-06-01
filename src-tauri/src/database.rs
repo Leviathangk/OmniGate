@@ -14,6 +14,12 @@ pub struct TrafficPoint {
     pub error_count: i64,
 }
 
+#[derive(serde::Serialize)]
+pub struct ProviderUsageReport {
+    pub proxy_clients: Vec<String>,
+    pub direct_clients: Vec<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RecentActivity {
     pub id: String,
@@ -581,6 +587,48 @@ impl DbManager {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM providers WHERE id = ?1;", rusqlite::params![id])
             .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_provider_usage(&self, provider_id: &str) -> Result<ProviderUsageReport, String> {
+        let conn = self.conn.lock().unwrap();
+        let mut proxy_clients = Vec::new();
+        let mut stmt1 = conn.prepare("SELECT client_id FROM client_config_providers WHERE provider_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let proxy_iter = stmt1.query_map(rusqlite::params![provider_id], |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+        for client in proxy_iter {
+            proxy_clients.push(client.unwrap());
+        }
+
+        let mut direct_clients = Vec::new();
+        let mut stmt2 = conn.prepare("SELECT client_id FROM client_configs WHERE direct_provider_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let direct_iter = stmt2.query_map(rusqlite::params![provider_id], |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+        for client in direct_iter {
+            direct_clients.push(client.unwrap());
+        }
+
+        Ok(ProviderUsageReport { proxy_clients, direct_clients })
+    }
+
+    pub fn clear_provider_references(&self, provider_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        let now = Utc::now().timestamp_millis();
+        
+        // Clear direct_provider_id
+        conn.execute(
+            "UPDATE client_configs SET direct_provider_id = NULL, updated_at = ?2 WHERE direct_provider_id = ?1;",
+            rusqlite::params![provider_id, now],
+        ).map_err(|e| e.to_string())?;
+        
+        // Clear manual_provider_id and reset strategy if needed
+        conn.execute(
+            "UPDATE client_configs SET manual_provider_id = NULL, strategy = 'fallback', updated_at = ?2 WHERE manual_provider_id = ?1;",
+            rusqlite::params![provider_id, now],
+        ).map_err(|e| e.to_string())?;
+        
         Ok(())
     }
 
