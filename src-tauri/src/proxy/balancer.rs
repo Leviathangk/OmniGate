@@ -1,6 +1,6 @@
 use super::models::ProxyProvider;
 use rand::Rng;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use crate::database::DbManager;
 use std::collections::HashMap;
 
@@ -12,11 +12,30 @@ pub struct RoutingPlan {
 
 pub struct Balancer {
     db: Arc<DbManager>,
+    penalties: RwLock<HashMap<String, u32>>,
 }
 
 impl Balancer {
     pub fn new(db: Arc<DbManager>) -> Self {
-        Self { db }
+        Self { 
+            db,
+            penalties: RwLock::new(HashMap::new()),
+        }
+    }
+
+    pub fn record_failure(&self, provider_id: &str) {
+        if let Ok(mut map) = self.penalties.write() {
+            let penalty = map.entry(provider_id.to_string()).or_insert(0);
+            if *penalty < 10 { // Max penalty is 10
+                *penalty += 1;
+            }
+        }
+    }
+
+    pub fn record_success(&self, provider_id: &str) {
+        if let Ok(mut map) = self.penalties.write() {
+            map.remove(provider_id);
+        }
     }
 
     pub fn get_routing_plan(&self, client_id: &str) -> Option<RoutingPlan> {
@@ -60,6 +79,41 @@ impl Balancer {
 
         if attached_providers.is_empty() {
             return None;
+        }
+
+        // --- 惩罚降级与“大家平权”逻辑 ---
+        if let Ok(map) = self.penalties.read() {
+            let mut all_penalized = true;
+            for p in &attached_providers {
+                if *map.get(&p.id).unwrap_or(&0) == 0 {
+                    all_penalized = false;
+                    break;
+                }
+            }
+            drop(map); // 释放读锁
+
+            if all_penalized {
+                // 大家平权：所有当前可用的节点都处于惩罚状态，直接全部重置满血
+                if let Ok(mut write_map) = self.penalties.write() {
+                    for p in &attached_providers {
+                        write_map.remove(&p.id);
+                    }
+                }
+            }
+        }
+
+        // 应用惩罚到临时副本
+        if let Ok(map) = self.penalties.read() {
+            for p in &mut attached_providers {
+                let penalty = *map.get(&p.id).unwrap_or(&0);
+                if penalty > 0 {
+                    // 顺序模式：每次惩罚将排序后延 1000 位
+                    p.sort_order = p.sort_order.saturating_add(penalty * 1000);
+                    // 随机模式：每次惩罚将权重除以 2（最小为 1）
+                    let divisor = 1_u32.checked_shl(penalty).unwrap_or(1024);
+                    p.weight = std::cmp::max(1, p.weight / divisor);
+                }
+            }
         }
 
         // Apply strategy

@@ -220,6 +220,7 @@ pub async fn handle_claude_messages(
                         }
                     }
                     let latency = start_time.elapsed().as_millis() as u32;
+                    state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, status.as_u16(), latency, None);
                     let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     let body = Body::from_stream(stream);
@@ -351,6 +352,7 @@ pub async fn handle_opencode_claude(
                         }
                     }
                     let latency = start_time.elapsed().as_millis() as u32;
+                    state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
                     let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     return Ok(rb.body(Body::from_stream(stream)).unwrap());
@@ -369,6 +371,7 @@ pub async fn handle_opencode_claude(
                 }
             }
         }
+        state.balancer.record_failure(&provider.id);
     }
 
     let msg = if last_error.is_empty() { "[OmniGate] 所有上游供应商均请求失败。".to_string() }
@@ -472,6 +475,7 @@ pub async fn handle_opencode_resp(
                         }
                     }
                     let latency = start_time.elapsed().as_millis() as u32;
+                    state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
                     let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     return Ok(rb.body(Body::from_stream(stream)).unwrap());
@@ -490,6 +494,7 @@ pub async fn handle_opencode_resp(
                 }
             }
         }
+        state.balancer.record_failure(&provider.id);
     }
 
     let msg = if last_error.is_empty() { "[OmniGate] 所有上游供应商均请求失败。".to_string() }
@@ -581,6 +586,7 @@ pub async fn handle_opencode_chat(
                         }
                     }
                     let latency = start_time.elapsed().as_millis() as u32;
+                    state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
                     let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     return Ok(rb.body(Body::from_stream(stream)).unwrap());
@@ -599,6 +605,7 @@ pub async fn handle_opencode_chat(
                 }
             }
         }
+        state.balancer.record_failure(&provider.id);
     }
 
     let msg = if last_error.is_empty() { "[OmniGate] 所有上游供应商均请求失败。".to_string() }
@@ -723,6 +730,7 @@ pub async fn handle_codex_proxy(
                         }
                     }
                     let latency = start_time.elapsed().as_millis() as u32;
+                    state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
                     let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     let body = Body::from_stream(stream);
@@ -745,6 +753,7 @@ pub async fn handle_codex_proxy(
             }
         }
         // 该供应商所有次数耗尽，继续下一个供应商
+        state.balancer.record_failure(&provider.id);
     }
 
     let msg = if last_error.is_empty() {
