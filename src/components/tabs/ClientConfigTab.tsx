@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, AlertTriangle, FileText, Pin, Minus, Dices, BarChart2, Zap, Globe } from "lucide-react";
+import { Plus, AlertTriangle, FileText, Pin, Minus, Dices, BarChart2, Zap, Globe, Trash2 } from "lucide-react";
 import { CustomSelect, Provider, ClientConfig } from "../../App";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -81,6 +81,23 @@ export function ClientConfigTab({
   setHijackProviderName,
   reapplyProxyConfig
 }: ClientConfigTabProps) {
+  const [opencodeDirectList, setOpencodeDirectList] = React.useState<string[]>([]);
+  
+  const fetchOpencodeDirectProviders = async () => {
+    try {
+      const res = await invoke<string[]>("get_opencode_direct_providers");
+      setOpencodeDirectList(res);
+    } catch (err) {
+      console.error("Failed to fetch opencode direct providers:", err);
+    }
+  };
+
+  React.useEffect(() => {
+    if (clientSubTab === "opencode") {
+      fetchOpencodeDirectProviders();
+    }
+  }, [clientSubTab]);
+
   const handlePinProvider = (clientId: string, providerId: string) => {
     setClientConfigs(prev => prev.map(c => {
       if (c.client_id === clientId) {
@@ -730,20 +747,19 @@ export function ClientConfigTab({
                 <div>
                   <h3 style={{ fontSize: "1.2rem" }}>OpenCode 配置管理</h3>
                   <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                    {masterCfg.operation_mode === "proxy" ? "向 OpenCode 注入 3 个代理供应商，流量经 OmniGate 转发" : "将真实供应商信息直接写入 OpenCode 配置文件，支持多节点共存"}
+                    {masterCfg.operation_mode === "proxy" ? "视图：管理 OmniGate 内部转发的 3 个代理节点配置（支持负载均衡）" : "视图：管理向 OpenCode 配置文件中直接写入的外部节点"}
+                    <span style={{ color: "hsl(var(--primary))", marginLeft: "8px", fontWeight: "500" }}>💡 双轨并存：代理与直连节点可同时生效</span>
                   </p>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-                  {masterCfg.operation_mode !== "direct" && (
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px", borderRight: "1px solid hsl(var(--border-color))", paddingRight: "20px" }}>
-                      <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
-                      <div className="switch-container" onClick={() => handleToggleClient("opencode")}>
-                        <div className={`switch-track ${masterCfg.is_enabled ? "active" : ""}`}>
-                          <div className="switch-thumb"></div>
-                        </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", borderRight: "1px solid hsl(var(--border-color))", paddingRight: "20px" }}>
+                    <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>代理接管:</span>
+                    <div className="switch-container" onClick={() => handleToggleClient("opencode")}>
+                      <div className={`switch-track ${masterCfg.is_enabled ? "active" : ""}`}>
+                        <div className="switch-thumb"></div>
                       </div>
                     </div>
-                  )}
+                  </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: "4px", background: "hsl(var(--bg-secondary) / 0.5)", padding: "4px", borderRadius: "8px", border: "1px solid hsl(var(--border-color))" }}>
                     <button
@@ -828,6 +844,7 @@ export function ClientConfigTab({
                         });
                         showToast("直连供应商已添加至 OpenCode！", "success");
                         setAddingProviderId("");
+                        fetchOpencodeDirectProviders();
                       } catch (e: any) {
                         showToast("添加直连配置失败: " + e, "error");
                       }
@@ -837,6 +854,41 @@ export function ClientConfigTab({
                     <Plus size={16} style={{ marginRight: "6px" }} /> 添加直连节点
                   </button>
                 </div>
+
+                {/* 已经添加的直连节点列表 */}
+                {opencodeDirectList.length > 0 && (
+                  <div style={{ marginTop: "16px" }}>
+                    <h5 style={{ fontSize: "0.82rem", fontWeight: "600", marginBottom: "10px", color: "hsl(var(--text-secondary))" }}>已添加的直连供应商节点</h5>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {opencodeDirectList.map(providerId => {
+                        const pName = providers.find(p => p.id === providerId)?.name || providerId;
+                        const displayName = `OmniGate-Provider(${pName})`;
+                        return (
+                          <div key={providerId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", backgroundColor: "hsl(var(--bg-app))", borderRadius: "8px", border: "1px solid hsl(var(--border-color))" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <Globe size={15} style={{ color: "hsl(var(--success))" }} />
+                              <span style={{ fontSize: "0.85rem", fontWeight: "600" }}>{displayName}</span>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await invoke("remove_opencode_direct_provider", { providerId });
+                                  showToast("直连供应商已移除", "info");
+                                  fetchOpencodeDirectProviders();
+                                } catch (e: any) {
+                                  showToast("移除失败: " + e, "error");
+                                }
+                              }}
+                              style={{ display: "flex", alignItems: "center", gap: "4px", padding: "4px 8px", fontSize: "0.75rem", color: "hsl(var(--error))", background: "transparent", border: "1px solid hsl(var(--error) / 0.3)", borderRadius: "6px", cursor: "pointer", transition: "all 0.2s" }}
+                            >
+                              <Trash2 size={12} /> 移除
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

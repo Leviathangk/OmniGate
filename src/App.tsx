@@ -219,7 +219,11 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, options, onCh
         }
       }
     };
-    const handleScroll = () => {
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement | Document;
+      if ('closest' in target && target.closest('.custom-select-portal-menu')) {
+        return;
+      }
       if (isOpen) setIsOpen(false);
     };
 

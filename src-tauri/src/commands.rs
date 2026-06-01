@@ -978,6 +978,22 @@ pub fn apply_direct_config(
                 }
             }
             
+            let mut clean_url = provider.api_url.clone()
+                .trim_end_matches('/')
+                .trim_end_matches("/chat/completions")
+                .trim_end_matches("/messages")
+                .trim_end_matches('/')
+                .to_string();
+            let has_version = {
+                let parts: Vec<&str> = clean_url.split('/').collect();
+                if let Some(last) = parts.last() {
+                    last.starts_with('v') && last.len() > 1 && last[1..].chars().all(|c| c.is_ascii_digit())
+                } else { false }
+            };
+            if !has_version {
+                clean_url = format!("{}/v1", clean_url);
+            }
+            
             if let Some(providers_obj) = config["provider"].as_object_mut() {
                 providers_obj.insert(format!("direct-{}", provider.id), serde_json::json!({
                     "npm": match provider.protocol.as_str() {
@@ -985,9 +1001,9 @@ pub fn apply_direct_config(
                         "codex_responses" => "@ai-sdk/openai",
                         _ => "@ai-sdk/openai-compatible",
                     },
-                    "name": format!("Direct - {}", provider.name),
+                    "name": format!("OmniGate-Provider({})", provider.name),
                     "options": {
-                        "baseURL": provider.api_url.clone(),
+                        "baseURL": clean_url,
                         "apiKey": provider.api_key.clone()
                     },
                     "models": build_opencode_models_dict(&model_names)
@@ -999,6 +1015,52 @@ pub fn apply_direct_config(
         },
         _ => return Err(format!("Unknown clientId for direct config: {}", client_id)),
     }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_opencode_direct_providers() -> Result<Vec<String>, String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
+    let opencode_dir = std::path::PathBuf::from(&home).join(".config").join("opencode");
+    let config_path = opencode_dir.join("opencode.json");
+    if !config_path.exists() {
+        return Ok(vec![]);
+    }
+    
+    let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let config: serde_json::Value = serde_json::from_str(&content).unwrap_or(serde_json::json!({}));
+    
+    let mut providers = Vec::new();
+    if let Some(provider_obj) = config.get("provider").and_then(|v| v.as_object()) {
+        for key in provider_obj.keys() {
+            if key.starts_with("direct-") {
+                providers.push(key.trim_start_matches("direct-").to_string());
+            }
+        }
+    }
+    
+    Ok(providers)
+}
+
+#[tauri::command]
+pub fn remove_opencode_direct_provider(provider_id: String) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
+    let opencode_dir = std::path::PathBuf::from(&home).join(".config").join("opencode");
+    let config_path = opencode_dir.join("opencode.json");
+    if !config_path.exists() {
+        return Ok(());
+    }
+    
+    let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let mut config: serde_json::Value = serde_json::from_str(&content).unwrap_or(serde_json::json!({}));
+    
+    if let Some(provider_obj) = config.get_mut("provider").and_then(|v| v.as_object_mut()) {
+        provider_obj.remove(&format!("direct-{}", provider_id));
+    }
+    
+    let out = serde_json::to_string_pretty(&config).unwrap();
+    std::fs::write(&config_path, out).map_err(|e| e.to_string())?;
     
     Ok(())
 }
