@@ -453,13 +453,7 @@ pub fn hijack_codex_config(
         serde_json::json!({})
     };
     
-    if let Some(obj) = auth_json.as_object_mut() {
-        for (_, val) in obj.iter_mut() {
-            if val.is_string() {
-                *val = serde_json::Value::String(proxy_api_key.clone());
-            }
-        }
-    }
+    auth_json["OPENAI_API_KEY"] = serde_json::Value::String(proxy_api_key.clone());
     
     fs::write(&auth_path, serde_json::to_string_pretty(&auth_json).unwrap()).map_err(|e| e.to_string())?;
     
@@ -952,7 +946,7 @@ pub fn apply_direct_config(
                 serde_json::json!({})
             };
             
-            auth_doc[provider_name] = serde_json::Value::String(provider.api_key.clone());
+            auth_doc["OPENAI_API_KEY"] = serde_json::Value::String(provider.api_key.clone());
             std::fs::write(&auth_path, serde_json::to_string_pretty(&auth_doc).unwrap()).map_err(|e| e.to_string())?;
         },
         "opencode" => {
