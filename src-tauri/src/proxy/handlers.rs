@@ -240,7 +240,8 @@ pub async fn handle_claude_messages(
                 }
             }
         }
-        // 该供应商所有次数耗尽，继续下一个供应商
+        // 该供应商所有次数耗尽，记录惩罚，继续下一个供应商
+        state.balancer.record_failure(&provider.id);
     }
 
     let (status_code, error_type, msg) = if all_providers_skipped {
