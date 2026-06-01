@@ -113,6 +113,7 @@ pub fn run() {
             commands::hijack_codex_config,
             commands::restore_codex_config,
             commands::hijack_opencode_config,
+            commands::apply_direct_config,
             commands::restore_opencode_config,
             commands::hijack_claude_config,
             commands::restore_claude_config,

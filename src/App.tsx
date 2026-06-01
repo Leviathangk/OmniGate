@@ -157,6 +157,8 @@ export interface ClientConfig {
   retry_count: number;
   timeout_seconds: number;
   manual_provider_id?: string;
+  direct_provider_id?: string;
+  operation_mode: string;
   providers: Provider[];
 }
 
@@ -751,12 +753,12 @@ function App() {
   // UI交互与图表/客户端/设置状态
   // UI交互与图表/客户端/设置状态
   const [clientConfigs, setClientConfigs] = useState<ClientConfig[]>([
-    { client_id: "claude",         is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
-    { client_id: "codex",          is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45,  providers: [] },
-    { client_id: "opencode",       is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
-    { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
-    { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
-    { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, providers: [] },
+    { client_id: "claude",         is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+    { client_id: "codex",          is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+    { client_id: "opencode",       is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+    { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+    { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+    { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
   ]);
 
   const [clientSubTab, setClientSubTab] = useState<string>("claude");
@@ -816,6 +818,7 @@ function App() {
   const [importFileName, setImportFileName] = useState<string>("");
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const importFileInputRef = useRef<HTMLInputElement>(null);
+
 
   // ============================================================================
   // 数据获取与同步
@@ -884,12 +887,12 @@ function App() {
         // Merge: DB 数据优先，DB 里没有的 client_id 用默认值补齐
         // 这样新增的 opencode-claude / opencode-resp / opencode-chat 可以自动初始化
         const defaultClientConfigs: ClientConfig[] = [
-          { client_id: "claude",          is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
-          { client_id: "codex",           is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45,  providers: [] },
-          { client_id: "opencode",        is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
-          { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
-          { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
-          { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+          { client_id: "claude",          is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+          { client_id: "codex",           is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+          { client_id: "opencode",        is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+          { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+          { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+          { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
         ];
         const mergedConfigs = defaultClientConfigs.map(def => {
           const fromDb = loadedClientConfigs.find((c: ClientConfig) => c.client_id === def.client_id);
@@ -918,12 +921,12 @@ function App() {
         clientConfigsReadyRef.current = false;
         await invoke("save_client_configs", {
           configs: [
-            { client_id: "claude",          is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
-            { client_id: "codex",           is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45,  providers: [] },
-            { client_id: "opencode",        is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
-            { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
-            { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
-            { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  providers: [] },
+            { client_id: "claude",          is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+            { client_id: "codex",           is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+            { client_id: "opencode",        is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+            { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+            { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+            { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
           ]
         });
         // 完成后允许 auto-save
@@ -1402,6 +1405,35 @@ function App() {
     }
   };
 
+
+  const reapplyProxyConfig = async (clientId: string) => {
+    // Only re-apply if the client is currently enabled
+    const config = clientConfigs.find(c => c.client_id === clientId);
+    if (!config || !config.is_enabled) return;
+    
+    if (clientId === "codex") {
+      try {
+        await invoke("hijack_codex_config", {
+          providerName: hijackProviderName || "custom",
+          baseUrl: hijackBaseUrl || "http://127.0.0.1:3456",
+          proxyApiKey: hijackApiKey || "sk-omnigate-fallback"
+        });
+      } catch (e) {}
+    } else if (clientId === "claude") {
+      try {
+        await invoke("hijack_claude_config", {
+          proxyApiKey: hijackApiKey || "sk-omnigate-fallback"
+        });
+      } catch (e) {}
+    } else if (clientId === "opencode") {
+      try {
+        await invoke("hijack_opencode_config", {
+          proxyApiKey: hijackApiKey || "sk-omnigate-fallback"
+        });
+      } catch (e) {}
+    }
+  };
+
   const handleStrategyChange = (clientId: string, strategy: string) => {
     setClientConfigs(prev => prev.map(c => c.client_id === clientId ? { ...c, strategy } : c));
   };
@@ -1807,6 +1839,7 @@ function App() {
               setClientConfigs={setClientConfigs}
               hijackProviderName={hijackProviderName}
               setHijackProviderName={setHijackProviderName}
+              reapplyProxyConfig={reapplyProxyConfig}
             />
           )}
 

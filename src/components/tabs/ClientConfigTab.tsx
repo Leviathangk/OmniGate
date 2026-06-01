@@ -1,6 +1,7 @@
 import React from "react";
 import { Plus, AlertTriangle, FileText, Pin, Minus } from "lucide-react";
 import { CustomSelect, Provider, ClientConfig } from "../../App";
+import { invoke } from "@tauri-apps/api/core";
 
 interface ClientConfigTabProps {
   clientSubTab: string;
@@ -23,6 +24,7 @@ interface ClientConfigTabProps {
   setClientConfigs: React.Dispatch<React.SetStateAction<ClientConfig[]>>;
   hijackProviderName: string;
   setHijackProviderName: (name: string) => void;
+  reapplyProxyConfig: (clientId: string) => Promise<void>;
 }
 
 const WeightInput = ({ value, onChange, disabled }: { value: number, onChange: (val: number) => void, disabled: boolean }) => {
@@ -76,7 +78,8 @@ export function ClientConfigTab({
   setAddingProviderId,
   setClientConfigs,
   hijackProviderName,
-  setHijackProviderName
+  setHijackProviderName,
+  reapplyProxyConfig
 }: ClientConfigTabProps) {
   const handlePinProvider = (clientId: string, providerId: string) => {
     setClientConfigs(prev => prev.map(c => {
@@ -85,6 +88,47 @@ export function ClientConfigTab({
       }
       return c;
     }));
+  };
+
+  const handleDirectProviderSelect = (clientId: string, providerId: string) => {
+    setClientConfigs(prev => prev.map(c => {
+      if (c.client_id === clientId) {
+        return { ...c, direct_provider_id: providerId };
+      }
+      return c;
+    }));
+  };
+
+  const handleToggleMode = async (clientId: string, mode: "proxy" | "direct") => {
+    const config = clientConfigs.find(c => c.client_id === clientId);
+    if (!config) return;
+
+    setClientConfigs(prev => prev.map(c => {
+      if (c.client_id === clientId) {
+        return { 
+          ...c, 
+          operation_mode: mode
+        };
+      }
+      return c;
+    }));
+
+    if (mode === "direct" && config.direct_provider_id) {
+      if (clientId !== "opencode") {
+        try {
+          await invoke("apply_direct_config", {
+            clientId: clientId,
+            providerId: config.direct_provider_id
+          });
+          showToast("已自动应用直连配置！", "success");
+        } catch (e: any) {
+          showToast("自动写入直连配置失败: " + e, "error");
+        }
+      }
+    } else if (mode === "proxy") {
+      await reapplyProxyConfig(clientId);
+      showToast("已恢复代理接管配置！", "success");
+    }
   };
 
   return (
@@ -101,18 +145,43 @@ export function ClientConfigTab({
           {renderCliMask(config.client_id)}
           <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "20px" }}>
             <div>
-              <h3 style={{ textTransform: "capitalize", fontSize: "1.2rem" }}>{config.client_id} 接管代理</h3>
-              <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>开启后本地客户端的流量将会经过 OmniGate 分流轮换</p>
+              <h3 style={{ textTransform: "capitalize", fontSize: "1.2rem" }}>{config.client_id} 配置管理</h3>
+              <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                {config.operation_mode === "proxy" ? "开启后本地客户端的流量将会经过 OmniGate 分流轮换" : "将配置直接硬编码写入目标软件，极速直连"}
+              </p>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
-              <div className="switch-container" onClick={() => handleToggleClient(config.client_id)}>
-                <div className={`switch-track ${config.is_enabled ? "active" : ""}`}>
-                  <div className="switch-thumb"></div>
-                </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "5px", background: "hsl(var(--bg-secondary))", padding: "4px", borderRadius: "8px" }}>
+                <button
+                  className={`tab-select-btn ${config.operation_mode !== "direct" ? "active" : ""}`}
+                  style={{ padding: "4px 12px", fontSize: "0.8rem", margin: 0, borderRadius: "6px" }}
+                  onClick={() => handleToggleMode(config.client_id, "proxy")}
+                >
+                  🟢 代理接管
+                </button>
+                <button
+                  className={`tab-select-btn ${config.operation_mode === "direct" ? "active" : ""}`}
+                  style={{ padding: "4px 12px", fontSize: "0.8rem", margin: 0, borderRadius: "6px" }}
+                  onClick={() => handleToggleMode(config.client_id, "direct")}
+                >
+                  ⚡️ 直连写入
+                </button>
               </div>
+
+              {config.operation_mode !== "direct" && (
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", borderLeft: "1px solid hsl(var(--border-color))", paddingLeft: "20px" }}>
+                  <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
+                  <div className="switch-container" onClick={() => handleToggleClient(config.client_id)}>
+                    <div className={`switch-track ${config.is_enabled ? "active" : ""}`}>
+                      <div className="switch-thumb"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
+
+          {config.operation_mode !== "direct" ? (
 
           <div className="priority-config-container">
             <div>
@@ -405,7 +474,52 @@ export function ClientConfigTab({
               </span>
             </div>
 
-          </div>
+            </div>
+          ) : (
+            <div className="priority-config-container" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              <div>
+                <h4 style={{ fontSize: "0.88rem", fontWeight: "600", marginBottom: "8px" }}>直连写入模式配置</h4>
+                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>请选择要直连的全局供应商。该供应商的连接信息将被直接硬写入目标客户端的配置文件中。</p>
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: "12px" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: "600", marginBottom: "6px", color: "hsl(var(--text-secondary))" }}>选择全局供应商</label>
+                  <CustomSelect
+                    value={config.direct_provider_id || ""}
+                    onChange={(val) => handleDirectProviderSelect(config.client_id, val.toString())}
+                    options={[
+                      { value: "", label: "-- 请选择供应商 --" },
+                      ...providers
+                        .filter(p => {
+                          if (config.client_id === "claude") return p.protocol === "claude";
+                          if (config.client_id === "codex") return p.protocol === "codex_responses";
+                          return true;
+                        })
+                        .map(p => ({ value: p.id, label: p.name }))
+                    ]}
+                  />
+                </div>
+                <button 
+                  className="btn-primary" 
+                  disabled={!config.direct_provider_id}
+                  onClick={async () => {
+                    try {
+                      await invoke("apply_direct_config", {
+                        clientId: config.client_id,
+                        providerId: config.direct_provider_id
+                      });
+                      showToast("直连配置已写入，请重启该客户端以使配置生效！", "success");
+                    } catch (e: any) {
+                      showToast("写入直连配置失败: " + e, "error");
+                    }
+                  }}
+                  style={{ padding: "10px 20px" }}
+                >
+                  ⚡️ 应用直连配置
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ))}
 
@@ -604,16 +718,39 @@ export function ClientConfigTab({
             <div className="panel-card">
               <div className="card-header-row" style={{ borderBottom: "1px solid hsl(var(--border-color))", paddingBottom: "16px", marginBottom: "16px" }}>
                 <div>
-                  <h3 style={{ fontSize: "1.2rem" }}>OpenCode 接管代理</h3>
-                  <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>开启后向 <code style={{ backgroundColor: "hsl(var(--bg-app))", padding: "1px 5px", borderRadius: "3px" }}>~/.config/opencode/opencode.json</code> 注入 3 个代理供应商，OpenCode 的流量经 OmniGate 转发</p>
+                  <h3 style={{ fontSize: "1.2rem" }}>OpenCode 配置管理</h3>
+                  <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                    {masterCfg.operation_mode === "proxy" ? "向 OpenCode 注入 3 个代理供应商，流量经 OmniGate 转发" : "将真实供应商信息直接写入 OpenCode 配置文件，支持多节点共存"}
+                  </p>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
-                  <div className="switch-container" onClick={() => handleToggleClient("opencode")}>
-                    <div className={`switch-track ${masterCfg.is_enabled ? "active" : ""}`}>
-                      <div className="switch-thumb"></div>
-                    </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "5px", background: "hsl(var(--bg-secondary))", padding: "4px", borderRadius: "8px" }}>
+                    <button
+                      className={`tab-select-btn ${masterCfg.operation_mode !== "direct" ? "active" : ""}`}
+                      style={{ padding: "4px 12px", fontSize: "0.8rem", margin: 0, borderRadius: "6px" }}
+                      onClick={() => handleToggleMode(masterCfg.client_id, "proxy")}
+                    >
+                      🟢 代理接管
+                    </button>
+                    <button
+                      className={`tab-select-btn ${masterCfg.operation_mode === "direct" ? "active" : ""}`}
+                      style={{ padding: "4px 12px", fontSize: "0.8rem", margin: 0, borderRadius: "6px" }}
+                      onClick={() => handleToggleMode(masterCfg.client_id, "direct")}
+                    >
+                      ⚡️ 直连写入
+                    </button>
                   </div>
+
+                  {masterCfg.operation_mode !== "direct" && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", borderLeft: "1px solid hsl(var(--border-color))", paddingLeft: "20px" }}>
+                      <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
+                      <div className="switch-container" onClick={() => handleToggleClient("opencode")}>
+                        <div className={`switch-track ${masterCfg.is_enabled ? "active" : ""}`}>
+                          <div className="switch-thumb"></div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               {/* 注入说明 */}
@@ -635,10 +772,53 @@ export function ClientConfigTab({
               </div>
             </div>
 
-            {/* 3 个独立协议子面板 */}
-            {claudeCfg && renderProviderPanel(claudeCfg, "供应商列表及权重分配（Claude 协议）", "claude", "hsl(var(--primary))", "/opencode/claude")}
-            {respCfg   && renderProviderPanel(respCfg,   "供应商列表及权重分配（Responses 协议）", "codex_responses", "hsl(var(--secondary))", "/opencode/responses")}
-            {chatCfg   && renderProviderPanel(chatCfg,   "供应商列表及权重分配（Chat 协议）", "codex_chat", "hsl(var(--warning))", "/opencode/chat")}
+            {masterCfg.operation_mode !== "direct" ? (
+              <>
+                {/* 3 个独立协议子面板 */}
+                {claudeCfg && renderProviderPanel(claudeCfg, "供应商列表及权重分配（Claude 协议）", "claude", "hsl(var(--primary))", "/opencode/claude")}
+                {respCfg   && renderProviderPanel(respCfg,   "供应商列表及权重分配（Responses 协议）", "codex_responses", "hsl(var(--secondary))", "/opencode/responses")}
+                {chatCfg   && renderProviderPanel(chatCfg,   "供应商列表及权重分配（Chat 协议）", "codex_chat", "hsl(var(--warning))", "/opencode/chat")}
+              </>
+            ) : (
+              <div className="panel-card" style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "20px" }}>
+                <div>
+                  <h4 style={{ fontSize: "0.88rem", fontWeight: "600", marginBottom: "8px" }}>直连写入模式配置</h4>
+                  <p style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>请选择要直连的全局供应商并添加。配置将被直接写入 OpenCode 配置文件中（支持多供应商共存）。</p>
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: "12px" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontSize: "0.78rem", fontWeight: "600", marginBottom: "6px", color: "hsl(var(--text-secondary))" }}>选择全局供应商</label>
+                    <CustomSelect
+                      value={addingProviderId}
+                      onChange={(val) => setAddingProviderId(val.toString())}
+                      options={[
+                        { value: "", label: "-- 请选择要添加的直连供应商 --" },
+                        ...providers.map(p => ({ value: p.id, label: p.name }))
+                      ]}
+                    />
+                  </div>
+                  <button 
+                    className="btn-primary" 
+                    disabled={!addingProviderId}
+                    onClick={async () => {
+                      try {
+                        await invoke("apply_direct_config", {
+                          clientId: "opencode",
+                          providerId: addingProviderId
+                        });
+                        showToast("直连供应商已添加至 OpenCode！", "success");
+                        setAddingProviderId("");
+                      } catch (e: any) {
+                        showToast("添加直连配置失败: " + e, "error");
+                      }
+                    }}
+                    style={{ padding: "10px 20px" }}
+                  >
+                    <Plus size={16} style={{ marginRight: "6px" }} /> 添加直连节点
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}

@@ -92,6 +92,8 @@ pub struct ClientConfigDto {
     pub retry_count: u32,
     pub timeout_seconds: u32,
     pub manual_provider_id: Option<String>,
+    pub direct_provider_id: Option<String>,
+    pub operation_mode: String,
     pub providers: Vec<ClientProviderDto>,
 }
 
@@ -439,11 +441,6 @@ pub fn hijack_codex_config(
     
     // 1. 修改 config.toml
     let config_path = temp_dir.join("config.toml");
-    let config_bak_path = temp_dir.join("config.toml.bak");
-    
-    if config_path.exists() && !config_bak_path.exists() {
-        fs::copy(&config_path, &config_bak_path).map_err(|e| e.to_string())?;
-    }
     
     let mut doc = if config_path.exists() {
         let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
@@ -473,11 +470,6 @@ pub fn hijack_codex_config(
     
     // 2. 修改 auth.json
     let auth_path = temp_dir.join("auth.json");
-    let auth_bak_path = temp_dir.join("auth.json.bak");
-    
-    if auth_path.exists() && !auth_bak_path.exists() {
-        fs::copy(&auth_path, &auth_bak_path).map_err(|e| e.to_string())?;
-    }
     
     let mut auth_json: serde_json::Value = if auth_path.exists() {
         let content = fs::read_to_string(&auth_path).unwrap_or_else(|_| "{}".to_string());
@@ -501,23 +493,8 @@ pub fn hijack_codex_config(
 
 #[tauri::command]
 pub fn restore_codex_config() -> Result<(), String> {
-    let temp_dir = get_codex_dir();
-    
-    let config_path = temp_dir.join("config.toml");
-    let config_bak_path = temp_dir.join("config.toml.bak");
-    
-    if config_bak_path.exists() {
-        fs::copy(&config_bak_path, &config_path).map_err(|e| e.to_string())?;
-        fs::remove_file(&config_bak_path).map_err(|e| e.to_string())?;
-    }
-    
-    let auth_path = temp_dir.join("auth.json");
-    let auth_bak_path = temp_dir.join("auth.json.bak");
-    
-    if auth_bak_path.exists() {
-        fs::copy(&auth_bak_path, &auth_path).map_err(|e| e.to_string())?;
-        fs::remove_file(&auth_bak_path).map_err(|e| e.to_string())?;
-    }
+    // We no longer restore .bak files to preserve direct config
+    // The user's direct config will overwrite these anyway
     
     Ok(())
 }
@@ -559,14 +536,9 @@ pub fn hijack_opencode_config(
     }
 
     let config_path = opencode_dir.join("opencode.json");
-    let config_bak_path = opencode_dir.join("opencode.json.bak");
 
     // 读取或新建 opencode.json
     let mut config: serde_json::Value = if config_path.exists() {
-        // 首次备份
-        if !config_bak_path.exists() {
-            fs::copy(&config_path, &config_bak_path).map_err(|e| e.to_string())?;
-        }
         let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
         serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({
             "$schema": "https://opencode.ai/config.json"
@@ -663,14 +635,8 @@ pub fn hijack_opencode_config(
 pub fn restore_opencode_config() -> Result<(), String> {
     let opencode_dir = get_opencode_config_dir();
     let config_path = opencode_dir.join("opencode.json");
-    let config_bak_path = opencode_dir.join("opencode.json.bak");
 
-    if config_bak_path.exists() {
-        // 有备份：直接还原
-        fs::copy(&config_bak_path, &config_path).map_err(|e| e.to_string())?;
-        fs::remove_file(&config_bak_path).map_err(|e| e.to_string())?;
-    } else if config_path.exists() {
-        // 无备份：只删除注入的三个供应商 key
+    if config_path.exists() {
         let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
         if let Ok(mut config) = serde_json::from_str::<serde_json::Value>(&content) {
             if let Some(providers) = config["provider"].as_object_mut() {
@@ -715,13 +681,9 @@ pub fn hijack_claude_config(
     }
 
     let config_path = claude_dir.join("settings.json");
-    let config_bak_path = claude_dir.join("settings.json.bak");
 
     // 读取或新建 settings.json
     let mut config: serde_json::Value = if config_path.exists() {
-        if !config_bak_path.exists() {
-            fs::copy(&config_path, &config_bak_path).map_err(|e| e.to_string())?;
-        }
         let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
         serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
     } else {
@@ -747,12 +709,8 @@ pub fn hijack_claude_config(
 pub fn restore_claude_config() -> Result<(), String> {
     let claude_dir = get_claude_config_dir();
     let config_path = claude_dir.join("settings.json");
-    let config_bak_path = claude_dir.join("settings.json.bak");
 
-    if config_bak_path.exists() {
-        fs::copy(&config_bak_path, &config_path).map_err(|e| e.to_string())?;
-        fs::remove_file(&config_bak_path).map_err(|e| e.to_string())?;
-    } else if config_path.exists() {
+    if config_path.exists() {
         let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
         if let Ok(mut config) = serde_json::from_str::<serde_json::Value>(&content) {
             if let Some(env) = config.get_mut("env").and_then(|v| v.as_object_mut()) {
@@ -808,6 +766,8 @@ pub fn get_client_configs(
             retry_count: c.retry_count,
             timeout_seconds: c.timeout_seconds,
             manual_provider_id: c.manual_provider_id,
+            direct_provider_id: c.direct_provider_id,
+            operation_mode: c.operation_mode,
             providers,
         });
     }
@@ -828,6 +788,8 @@ pub fn save_client_configs(
             retry_count: c.retry_count,
             timeout_seconds: c.timeout_seconds,
             manual_provider_id: c.manual_provider_id.clone(),
+            direct_provider_id: c.direct_provider_id.clone(),
+            operation_mode: c.operation_mode.clone(),
         };
         let mut provider_rows = Vec::new();
         for p in c.providers {
@@ -1040,4 +1002,160 @@ pub fn get_external_mcp_servers(client_id: String) -> Result<Vec<McpServerDto>, 
     }
     
     Ok(dtos)
+}
+
+// ============================================================================
+// Direct Config Mode Injection
+// ============================================================================
+
+#[tauri::command]
+pub fn apply_direct_config(
+    client_id: String,
+    provider_id: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let providers = state.db.get_all_providers().map_err(|e| e.to_string())?;
+    let provider = providers.into_iter().find(|p| p.id == provider_id)
+        .ok_or_else(|| "Provider not found".to_string())?;
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    
+    match client_id.as_str() {
+        "claude" => {
+            let claude_dir = std::path::PathBuf::from(&home).join(".claude");
+            if !claude_dir.exists() {
+                std::fs::create_dir_all(&claude_dir).map_err(|e| e.to_string())?;
+            }
+            let config_path = claude_dir.join("settings.json");
+            let config_bak_path = claude_dir.join("settings.json.bak");
+            
+            let mut config: serde_json::Value = if config_path.exists() {
+                if !config_bak_path.exists() {
+                    std::fs::copy(&config_path, &config_bak_path).map_err(|e| e.to_string())?;
+                }
+                let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+                serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+            } else {
+                serde_json::json!({})
+            };
+            
+            if !config.get("env").is_some_and(|v| v.is_object()) {
+                config["env"] = serde_json::json!({});
+            }
+            
+            if let Some(env) = config["env"].as_object_mut() {
+                env.insert("ANTHROPIC_BASE_URL".to_string(), serde_json::Value::String(provider.api_url.clone()));
+                env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), serde_json::Value::String(provider.api_key.clone()));
+            }
+            let out = serde_json::to_string_pretty(&config).unwrap();
+            std::fs::write(&config_path, out).map_err(|e| e.to_string())?;
+        },
+        "codex" => {
+            let codex_dir = std::path::PathBuf::from(&home).join(".codex");
+            if !codex_dir.exists() {
+                std::fs::create_dir_all(&codex_dir).map_err(|e| e.to_string())?;
+            }
+            let config_path = codex_dir.join("config.toml");
+            let config_bak_path = codex_dir.join("config.toml.bak");
+            
+            if config_path.exists() && !config_bak_path.exists() {
+                std::fs::copy(&config_path, &config_bak_path).map_err(|e| e.to_string())?;
+            }
+            
+            let mut doc = if config_path.exists() {
+                let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+                content.parse::<toml_edit::DocumentMut>().unwrap_or_else(|_| toml_edit::DocumentMut::new())
+            } else {
+                toml_edit::DocumentMut::new()
+            };
+            
+            let provider_name = "custom"; // Or provider.name, but codex typically uses "custom" for custom endpoints
+            doc["model_provider"] = toml_edit::value(provider_name);
+            
+            if !doc.contains_key("model_providers") {
+                doc["model_providers"] = toml_edit::Item::Table(toml_edit::Table::new());
+            }
+            
+            if let Some(providers_table) = doc["model_providers"].as_table_mut() {
+                if !providers_table.contains_key(provider_name) {
+                    providers_table.insert(provider_name, toml_edit::Item::Table(toml_edit::Table::new()));
+                }
+                
+                if let Some(provider_item) = providers_table.get_mut(provider_name) {
+                    provider_item["base_url"] = toml_edit::value(provider.api_url.clone());
+                    provider_item["name"] = toml_edit::value(provider_name);
+                }
+            }
+            
+            std::fs::write(&config_path, doc.to_string()).map_err(|e| e.to_string())?;
+            
+            // auth.json
+            let auth_path = codex_dir.join("auth.json");
+            let auth_bak_path = codex_dir.join("auth.json.bak");
+            if auth_path.exists() && !auth_bak_path.exists() {
+                std::fs::copy(&auth_path, &auth_bak_path).map_err(|e| e.to_string())?;
+            }
+            
+            let mut auth_doc: serde_json::Value = if auth_path.exists() {
+                let content = std::fs::read_to_string(&auth_path).unwrap_or_default();
+                serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+            } else {
+                serde_json::json!({})
+            };
+            
+            auth_doc[provider_name] = serde_json::Value::String(provider.api_key.clone());
+            std::fs::write(&auth_path, serde_json::to_string_pretty(&auth_doc).unwrap()).map_err(|e| e.to_string())?;
+        },
+        "opencode" => {
+            let opencode_dir = std::path::PathBuf::from(&home).join(".config").join("opencode");
+            if !opencode_dir.exists() {
+                std::fs::create_dir_all(&opencode_dir).map_err(|e| e.to_string())?;
+            }
+            let config_path = opencode_dir.join("opencode.json");
+            let mut config: serde_json::Value = if config_path.exists() {
+                let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+                serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({
+                    "$schema": "https://opencode.ai/config.json"
+                }))
+            } else {
+                serde_json::json!({
+                    "$schema": "https://opencode.ai/config.json"
+                })
+            };
+            
+            if !config.get("provider").is_some_and(|v| v.is_object()) {
+                config["provider"] = serde_json::json!({});
+            }
+            
+            let models = state.db.get_models_by_provider(&provider.id).unwrap_or_default();
+            let mut model_names = std::collections::HashSet::new();
+            for m in models {
+                if m.is_active {
+                    model_names.insert(m.name.clone());
+                }
+            }
+            
+            if let Some(providers_obj) = config["provider"].as_object_mut() {
+                providers_obj.insert(format!("direct-{}", provider.id), serde_json::json!({
+                    "npm": match provider.protocol.as_str() {
+                        "claude" => "@ai-sdk/anthropic",
+                        "codex_responses" => "@ai-sdk/openai",
+                        _ => "@ai-sdk/openai-compatible",
+                    },
+                    "name": format!("Direct - {}", provider.name),
+                    "options": {
+                        "baseURL": provider.api_url.clone(),
+                        "apiKey": provider.api_key.clone()
+                    },
+                    "models": build_opencode_models_dict(&model_names)
+                }));
+            }
+            
+            let out = serde_json::to_string_pretty(&config).unwrap();
+            std::fs::write(&config_path, out).map_err(|e| e.to_string())?;
+        },
+        _ => return Err(format!("Unknown clientId for direct config: {}", client_id)),
+    }
+    
+    Ok(())
 }
