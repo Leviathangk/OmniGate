@@ -39,6 +39,19 @@ pub fn run() {
                         proxy::server::start_proxy_server(3456, proxy_db_arc, proxy_running).await;
                     });
                     
+                    // Daily cleanup loop
+                    let db_for_cleanup = db_arc.clone();
+                    tauri::async_runtime::spawn(async move {
+                        // 每天 (24h) 执行一次清理
+                        let mut interval = tokio::time::interval(std::time::Duration::from_secs(24 * 60 * 60));
+                        loop {
+                            interval.tick().await;
+                            if let Err(e) = db_for_cleanup.cleanup_old_usage_statistics() {
+                                eprintln!("Failed to run daily cleanup: {}", e);
+                            }
+                        }
+                    });
+                    
                     // Dashboard event emitter loop
                     let app_handle = app.handle().clone();
                     let db_for_events = db_arc.clone();

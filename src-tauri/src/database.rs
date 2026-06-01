@@ -339,13 +339,13 @@ impl DbManager {
         Ok(manager)
     }
 
-    fn cleanup_old_usage_statistics(&self) -> Result<(), String> {
-        // Data retention: Keep logs for 180 days (6 months)
-        let six_months_ago = chrono::Utc::now().timestamp() - (180 * 24 * 60 * 60);
+    pub fn cleanup_old_usage_statistics(&self) -> Result<(), String> {
+        // Data retention: Keep logs for 7 days
+        let seven_days_ago = chrono::Utc::now().timestamp() - (7 * 24 * 60 * 60);
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "DELETE FROM usage_statistics WHERE created_at < ?1",
-            [six_months_ago],
+            [seven_days_ago],
         ).map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -403,6 +403,17 @@ impl DbManager {
                 error_message TEXT,
                 created_at INTEGER NOT NULL
             );",
+            [],
+        ).map_err(|e| e.to_string())?;
+
+        // 3.1 创建索引以大幅提升按时间过滤和按模型聚合查询的速度
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_usage_created_at ON usage_statistics(created_at);",
+            [],
+        ).map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_usage_created_model ON usage_statistics(created_at, model_name);",
             [],
         ).map_err(|e| e.to_string())?;
 

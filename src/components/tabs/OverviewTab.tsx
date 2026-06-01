@@ -25,8 +25,6 @@ interface OverviewTabProps {
   trafficTrend: any[];
   recentActivities: any[];
   modelUsage: any[];
-  statsPeriod: number;
-  setStatsPeriod: (n: number) => void;
   heatmapData: any[];
 }
 
@@ -35,8 +33,6 @@ export function OverviewTab({
   trafficTrend,
   recentActivities,
   modelUsage,
-  statsPeriod,
-  setStatsPeriod,
   heatmapData
 }: OverviewTabProps) {
   return (
@@ -210,37 +206,15 @@ export function OverviewTab({
           </div>
           
           <div className="panel-card">
-            <div className="card-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3>请求趋势</h3>
-              <div style={{ display: 'flex', background: 'hsl(var(--border-card))', padding: '3px', borderRadius: '8px', border: '1px solid hsl(var(--border-color))' }}>
-                {[7, 15, 30].map(days => (
-                  <button
-                    key={days}
-                    onClick={() => setStatsPeriod(days)}
-                    style={{
-                      background: statsPeriod === days ? 'hsl(var(--bg-card))' : 'transparent',
-                      color: statsPeriod === days ? 'hsl(var(--text-primary))' : 'hsl(var(--text-muted))',
-                      border: 'none',
-                      padding: '4px 12px',
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      cursor: 'pointer',
-                      fontWeight: statsPeriod === days ? '600' : 'normal',
-                      transition: 'all 0.2s ease',
-                      boxShadow: statsPeriod === days ? 'var(--card-shadow)' : 'none'
-                    }}
-                  >
-                    近 {days} 天
-                  </button>
-                ))}
-              </div>
+            <div className="card-header-row">
+              <h3>请求趋势 (近 7 天)</h3>
             </div>
             <div style={{ marginTop: '20px', height: '220px', width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
-                  data={Array.from({ length: statsPeriod }).map((_, i) => {
+                  data={Array.from({ length: 7 }).map((_, i) => {
                     const d = new Date();
-                    d.setDate(d.getDate() - (statsPeriod - 1) + i);
+                    d.setDate(d.getDate() - (7 - 1) + i);
                     const dateStr = d.toISOString().split('T')[0];
                     const found = heatmapData.find(item => item.date === dateStr);
                     return { date: dateStr.slice(5), count: found ? found.count : 0 };

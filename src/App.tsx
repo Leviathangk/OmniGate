@@ -625,7 +625,7 @@ function App() {
   // ============================================================================
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [darkMode, setDarkMode] = useState<boolean>(true);
-  const [statsPeriod, setStatsPeriod] = useState<number>(7);
+
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
 
   const [cliStatus, setCliStatus] = useState<Record<string, boolean>>({
@@ -1733,8 +1733,6 @@ function App() {
               trafficTrend={trafficTrend}
               recentActivities={recentActivities}
               modelUsage={modelUsage}
-              statsPeriod={statsPeriod}
-              setStatsPeriod={setStatsPeriod}
               heatmapData={heatmapData}
             />
           )}
