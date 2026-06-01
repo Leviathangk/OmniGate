@@ -645,6 +645,17 @@ function App() {
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showNotifications && notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showNotifications]);
 
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
 
@@ -1698,12 +1709,6 @@ function App() {
               <div className="menu-icon"><Sliders size={17} /></div>
               <span>客户端配置</span>
             </li>
-          </ul>
-        </div>
-
-        <div className="menu-section">
-          <div className="menu-title">功能管理</div>
-          <ul className="menu-list">
             <li className={`menu-item ${activeTab === "global_prompts" ? "active" : ""}`} onClick={() => setActiveTab("global_prompts")}>
               <div className="menu-icon"><FileText size={17} /></div>
               <span>全局提示词</span>
@@ -1773,7 +1778,7 @@ function App() {
             <button className="icon-btn" onClick={() => setDarkMode(!darkMode)} title="切换主题">
               {darkMode ? <Sun size={17} /> : <Moon size={17} />}
             </button>
-            <div style={{ position: "relative" }}>
+            <div ref={notifRef} style={{ position: "relative" }}>
               <button 
                 className="icon-btn" 
                 onClick={() => setShowNotifications(!showNotifications)} 
@@ -1781,9 +1786,14 @@ function App() {
                 style={{ position: "relative" }}
               >
                 <Bell size={17} />
-                {notifications.length > 0 && (
-                  <span style={{ position: "absolute", top: "8px", right: "8px", width: "7px", height: "7px", backgroundColor: "hsl(var(--danger))", borderRadius: "50%" }}></span>
-                )}
+                {notifications.length > 0 && (() => {
+                  const total = notifications.reduce((sum, n) => sum + (n.count || 1), 0);
+                  return (
+                    <span style={{ position: "absolute", top: "2px", right: "2px", backgroundColor: "hsl(var(--danger))", color: "white", fontSize: "10px", fontWeight: "bold", padding: "1px 5px", borderRadius: "10px", transform: "scale(0.85)" }}>
+                      {total > 99 ? '99+' : total}
+                    </span>
+                  );
+                })()}
               </button>
               
               {showNotifications && (
