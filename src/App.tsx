@@ -1717,10 +1717,7 @@ function App() {
               <div className="menu-icon"><FileText size={17} /></div>
               <span>全局提示词</span>
             </li>
-            <li className={`menu-item ${activeTab === "skills" ? "active" : ""}`} onClick={() => setActiveTab("skills")}>
-              <div className="menu-icon"><Brain size={17} /></div>
-              <span>Skill 技能管理</span>
-            </li>
+
             <li className={`menu-item ${activeTab === "mcp" ? "active" : ""}`} onClick={() => setActiveTab("mcp")}>
               <div className="menu-icon"><Boxes size={17} /></div>
               <span>MCP 服务管理</span>
@@ -1884,27 +1881,7 @@ function App() {
             />
           )}
 
-          {/* ============================================================================
-              TAB: SKILLS (技能管理)
-             ============================================================================ */}
-          {activeTab === "skills" && (
-            <SkillsTab
-              newSkillName={newSkillName}
-              setNewSkillName={setNewSkillName}
-              newSkillDesc={newSkillDesc}
-              setNewSkillDesc={setNewSkillDesc}
-              newSkillPrompt={newSkillPrompt}
-              setNewSkillPrompt={setNewSkillPrompt}
-              handleAddSkill={handleAddSkill}
-              skills={skills}
-              setEditingSkillId={setEditingSkillId}
-              handleToggleSkill={handleToggleSkill}
-              editingSkillId={editingSkillId}
-              handleSaveSkillPrompt={handleSaveSkillPrompt}
-              skillEditorContent={skillEditorContent}
-              setSkillEditorContent={setSkillEditorContent}
-            />
-          )}
+
 
           {/* ============================================================================
               TAB: MCP (MCP 服务管理)
