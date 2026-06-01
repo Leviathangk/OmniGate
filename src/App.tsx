@@ -52,6 +52,19 @@ interface TrafficPoint { time: string; count: number; avg_latency: number; error
 interface RecentActivity { id: string; provider_name: string; model_name: string; status_code: number; latency_ms: number; error_message?: string; created_at: number; protocol?: string; }
 interface ModelUsage { name: string; count: number; }
 interface HeatmapData { date: string; count: number; }
+
+export interface AppNotification {
+  id: string;
+  provider_id: string;
+  provider_name: string;
+  model_name: string;
+  status_code: number;
+  error_message: string;
+  time: string;
+  timestamp: number;
+  count: number;
+}
+
 export interface Provider {
   id: string;
   name: string;
@@ -626,6 +639,9 @@ function App() {
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [darkMode, setDarkMode] = useState<boolean>(true);
 
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
 
   const [cliStatus, setCliStatus] = useState<Record<string, boolean>>({
@@ -731,11 +747,53 @@ function App() {
         setModelUsage(data.model_usage);
         setHeatmapData(data.heatmap);
       });
+
       return () => {
         unlisten.then(f => f());
       };
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    const unlistenError = listen("provider-error", (event: any) => {
+      const payload = event.payload;
+      const now = Date.now();
+      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+      
+      setNotifications(prev => {
+        let valid = prev.filter(n => now - n.timestamp < TWENTY_FOUR_HOURS);
+        
+        const existingIdx = valid.findIndex(n => 
+          n.provider_id === payload.provider_id && 
+          n.model_name === payload.model_name && 
+          n.status_code === payload.status_code
+        );
+        
+        if (existingIdx >= 0) {
+          const existing = valid[existingIdx];
+          valid.splice(existingIdx, 1);
+          return [{
+            ...existing,
+            time: payload.time,
+            timestamp: now,
+            error_message: payload.error_message,
+            count: (existing.count || 1) + 1
+          }, ...valid].slice(0, 50);
+        } else {
+          return [{
+            ...payload,
+            id: Math.random().toString(36).substring(7),
+            timestamp: now,
+            count: 1
+          }, ...valid].slice(0, 50);
+        }
+      });
+    });
+
+    return () => {
+      unlistenError.then(f => f());
+    };
+  }, []);
 
   // UI交互与图表/客户端/设置状态
   // UI交互与图表/客户端/设置状态
@@ -1708,18 +1766,72 @@ function App() {
           </div>
 
           <div className="header-controls">
-            <div className="search-bar">
-              <Search size={15} style={{ color: "hsl(var(--text-muted))" }} />
-              <input placeholder="搜索模型、供应商、Skill..." />
-              <span className="search-shortcut">⌘K</span>
-            </div>
             <button className="icon-btn" onClick={() => setDarkMode(!darkMode)} title="切换主题">
               {darkMode ? <Sun size={17} /> : <Moon size={17} />}
             </button>
-            <button className="icon-btn" style={{ position: "relative" }} title="通知">
-              <Bell size={17} />
-              <span style={{ position: "absolute", top: "8px", right: "8px", width: "7px", height: "7px", backgroundColor: "hsl(var(--danger))", borderRadius: "50%" }}></span>
-            </button>
+            <div style={{ position: "relative" }}>
+              <button 
+                className="icon-btn" 
+                onClick={() => setShowNotifications(!showNotifications)} 
+                title="通知"
+                style={{ position: "relative" }}
+              >
+                <Bell size={17} />
+                {notifications.length > 0 && (
+                  <span style={{ position: "absolute", top: "8px", right: "8px", width: "7px", height: "7px", backgroundColor: "hsl(var(--danger))", borderRadius: "50%" }}></span>
+                )}
+              </button>
+              
+              {showNotifications && (
+                <div style={{
+                  position: "absolute", top: "100%", right: "0", marginTop: "12px",
+                  width: "360px", maxHeight: "400px", overflowY: "auto",
+                  backgroundColor: "hsl(var(--bg-card))",
+                  border: "1px solid hsl(var(--border-color))",
+                  borderRadius: "12px",
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+                  zIndex: 999,
+                  display: "flex", flexDirection: "column"
+                }}>
+                  <div style={{ padding: "16px", borderBottom: "1px solid hsl(var(--border-color))", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <h3 style={{ margin: 0, fontSize: "1rem", color: "hsl(var(--text-primary))" }}>异常通知</h3>
+                    {notifications.length > 0 && (
+                      <button onClick={() => setNotifications([])} style={{ background: "transparent", border: "none", color: "hsl(var(--text-muted))", cursor: "pointer", fontSize: "0.8rem" }}>
+                        全部清空
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ padding: "8px" }}>
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: "24px", textAlign: "center", color: "hsl(var(--text-muted))", fontSize: "0.9rem" }}>
+                        暂无任何通知
+                      </div>
+                    ) : (
+                      notifications.map(notif => (
+                        <div key={notif.id} style={{
+                          padding: "12px", marginBottom: "8px",
+                          backgroundColor: "hsl(var(--danger) / 0.05)",
+                          borderLeft: "3px solid hsl(var(--danger))",
+                          borderRadius: "6px"
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                            <strong style={{ color: "hsl(var(--text-primary))", fontSize: "0.85rem" }}>
+                              {notif.provider_name} ({notif.model_name})
+                              {notif.count > 1 && <span style={{ marginLeft: "6px", backgroundColor: "hsl(var(--danger) / 0.15)", color: "hsl(var(--danger))", padding: "2px 6px", borderRadius: "10px", fontSize: "0.7rem", fontWeight: "bold" }}>{notif.count} 次</span>}
+                            </strong>
+                            <span style={{ color: "hsl(var(--text-muted))", fontSize: "0.75rem" }}>{notif.time}</span>
+                          </div>
+                          <div style={{ color: "hsl(var(--text-secondary))", fontSize: "0.8rem", wordBreak: "break-all" }}>
+                            <span style={{ color: "hsl(var(--danger))", marginRight: "6px", fontWeight: "600" }}>HTTP {notif.status_code}</span>
+                            {notif.error_message}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 

@@ -5,7 +5,7 @@ use super::router::create_router;
 
 use std::sync::atomic::Ordering;
 
-pub async fn start_proxy_server(port: u16, db: Arc<crate::database::DbManager>, proxy_running: Arc<std::sync::atomic::AtomicBool>) {
+pub async fn start_proxy_server(port: u16, db: Arc<crate::database::DbManager>, proxy_running: Arc<std::sync::atomic::AtomicBool>, app_handle: tauri::AppHandle) {
     // Initialize our load balancer strategy
     let balancer = Arc::new(Balancer::new(db.clone()));
 
@@ -59,7 +59,7 @@ pub async fn start_proxy_server(port: u16, db: Arc<crate::database::DbManager>, 
     });
 
     // Setup router
-    let app = create_router(balancer, db.clone(), usage_tx);
+    let app = create_router(balancer, db.clone(), usage_tx, app_handle);
 
     // Bind to the given port
     let addr = format!("127.0.0.1:{}", port);

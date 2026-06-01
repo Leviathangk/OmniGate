@@ -35,8 +35,9 @@ pub fn run() {
                     
                     // Start proxy server on default port 3456
                     let proxy_db_arc = db_arc.clone();
+                    let proxy_app_handle = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
-                        proxy::server::start_proxy_server(3456, proxy_db_arc, proxy_running).await;
+                        proxy::server::start_proxy_server(3456, proxy_db_arc, proxy_running, proxy_app_handle).await;
                     });
                     
                     // Daily cleanup loop
