@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, AlertTriangle, FileText } from "lucide-react";
+import { Plus, AlertTriangle, FileText, Pin, Minus } from "lucide-react";
 import { CustomSelect, Provider, ClientConfig } from "../../App";
 
 interface ClientConfigTabProps {
@@ -25,6 +25,37 @@ interface ClientConfigTabProps {
   setHijackProviderName: (name: string) => void;
 }
 
+const WeightInput = ({ value, onChange, disabled }: { value: number, onChange: (val: number) => void, disabled: boolean }) => {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", border: "1px solid hsl(var(--border-color))", borderRadius: "6px", overflow: "hidden", backgroundColor: "hsl(var(--bg-card))", opacity: disabled ? 0.6 : 1 }}>
+      <button 
+        disabled={disabled || value <= 1} 
+        onClick={() => onChange(value - 1)}
+        style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 6px", background: "hsl(var(--bg-card))", border: "none", color: "hsl(var(--text-secondary))", cursor: (disabled || value <= 1) ? "not-allowed" : "pointer" }}
+      ><Minus size={12} /></button>
+      <input 
+        type="number" 
+        value={value} 
+        disabled={disabled}
+        onChange={(e) => {
+          const val = parseInt(e.target.value);
+          if (!isNaN(val)) onChange(val);
+        }}
+        onBlur={(e) => {
+          const val = parseInt(e.target.value);
+          if (isNaN(val) || val < 1) onChange(1);
+        }}
+        style={{ width: "32px", textAlign: "center", background: "transparent", border: "none", color: "hsl(var(--text-primary))", fontSize: "0.8rem", padding: "4px 0", outline: "none" }} 
+      />
+      <button 
+        disabled={disabled} 
+        onClick={() => onChange(value + 1)}
+        style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 6px", background: "hsl(var(--bg-card))", border: "none", color: "hsl(var(--text-secondary))", cursor: disabled ? "not-allowed" : "pointer" }}
+      ><Plus size={12} /></button>
+    </div>
+  );
+};
+
 export function ClientConfigTab({
   clientSubTab,
   setClientSubTab,
@@ -47,6 +78,15 @@ export function ClientConfigTab({
   hijackProviderName,
   setHijackProviderName
 }: ClientConfigTabProps) {
+  const handlePinProvider = (clientId: string, providerId: string) => {
+    setClientConfigs(prev => prev.map(c => {
+      if (c.client_id === clientId) {
+        return { ...c, manual_provider_id: providerId };
+      }
+      return c;
+    }));
+  };
+
   return (
     <div>
       <div className="tabs-control-row">
@@ -103,11 +143,14 @@ export function ClientConfigTab({
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th style={{ width: "80px" }}>优先级</th>
-                      <th>供应商</th>
-                      <th>运行状态</th>
-                      <th style={{ width: "200px" }}>轮换权重 (Weight)</th>
-                      <th>启用状态</th>
+                      <th style={{ width: "40%" }}>供应商</th>
+                      <th style={{ width: "15%", textAlign: "center" }}>运行状态</th>
+                      <th style={{ width: "30%", textAlign: "center" }}>
+                        {config.strategy === "random" && "轮换权重"}
+                        {config.strategy === "manual" && "手动选择"}
+                        {config.strategy === "priority" && "优先级调整"}
+                      </th>
+                      <th style={{ width: "15%", textAlign: "center" }}>启用状态</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -115,30 +158,20 @@ export function ClientConfigTab({
                       // 查询全局供应商表，判断该供应商是否已被全局禁用
                       const globalProvider = providers.find(gp => gp.id === p.id);
                       const isGloballyDisabled = globalProvider ? !globalProvider.is_active : false;
+                      const isPinned = config.strategy === "manual" && (config.manual_provider_id ? p.id === config.manual_provider_id : pIndex === 0);
 
                       return (
-                        <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : {}}>
-                          <td>
-                            <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                              <button
-                                className="btn-secondary"
-                                style={{ padding: "2px 4px", fontSize: "0.6rem" }}
-                                disabled={pIndex === 0 || isGloballyDisabled}
-                                onClick={() => handleMoveProvider(config.client_id, pIndex, -1)}
-                              >↑</button>
-                              <button
-                                className="btn-secondary"
-                                style={{ padding: "2px 4px", fontSize: "0.6rem" }}
-                                disabled={pIndex === config.providers.length - 1 || isGloballyDisabled}
-                                onClick={() => handleMoveProvider(config.client_id, pIndex, 1)}
-                              >↓</button>
-                            </div>
-                          </td>
+                        <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : (config.strategy === "manual" && !isPinned ? { opacity: 0.4 } : {})}>
                           <td style={{ fontWeight: "600" }}>
-                            {p.name}
+                            <div style={{ display: "flex", alignItems: "center" }}>
+                              {p.name}
+                              {isPinned && (
+                                <span style={{ marginLeft: "8px", fontSize: "0.65rem", fontWeight: "normal", padding: "2px 6px", borderRadius: "4px", backgroundColor: "hsl(var(--primary))", color: "#fff" }}>当前手动选择</span>
+                              )}
+                            </div>
                             <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{p.api_url}</div>
                           </td>
-                          <td>
+                          <td style={{ textAlign: "center" }}>
                             {isGloballyDisabled ? (
                               <span className="status-badge" style={{ backgroundColor: "hsl(var(--danger) / 0.15)", color: "hsl(var(--danger))", border: "1px solid hsl(var(--danger) / 0.3)" }}>
                                 全局已禁用
@@ -147,25 +180,47 @@ export function ClientConfigTab({
                               <span className="status-badge success">可用</span>
                             )}
                           </td>
-                          <td>
-                            <input
-                              type="number"
-                              min="1"
-                              value={p.weight}
-                              disabled={isGloballyDisabled}
-                              onChange={(e) => handleWeightChange(config.client_id, p.id, Number(e.target.value))}
-                              style={{
-                                width: "80px", padding: "4px 8px", borderRadius: "4px",
-                                border: "1px solid hsl(var(--border-color))",
-                                backgroundColor: "hsl(var(--bg-card))",
-                                color: "hsl(var(--text-primary))",
-                                cursor: isGloballyDisabled ? "not-allowed" : "text"
-                              }}
-                            />
+                          <td style={{ textAlign: "center" }}>
+                            {config.strategy === "priority" && (
+                              <div style={{ display: "inline-flex", gap: "4px", alignItems: "center" }}>
+                                <button
+                                  className="btn-secondary"
+                                  style={{ padding: "2px 4px", fontSize: "0.6rem" }}
+                                  disabled={pIndex === 0 || isGloballyDisabled}
+                                  onClick={() => handleMoveProvider(config.client_id, pIndex, -1)}
+                                >↑</button>
+                                <button
+                                  className="btn-secondary"
+                                  style={{ padding: "2px 4px", fontSize: "0.6rem" }}
+                                  disabled={pIndex === config.providers.length - 1 || isGloballyDisabled}
+                                  onClick={() => handleMoveProvider(config.client_id, pIndex, 1)}
+                                >↓</button>
+                              </div>
+                            )}
+                            {config.strategy === "random" && (
+                              <WeightInput
+                                value={p.weight}
+                                disabled={isGloballyDisabled}
+                                onChange={(val) => handleWeightChange(config.client_id, p.id, val)}
+                              />
+                            )}
+                            {config.strategy === "manual" && (
+                              <button
+                                className="btn-secondary"
+                                style={{ padding: "4px 8px", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "5px", opacity: isPinned ? 0.6 : 1 }}
+                                disabled={isPinned || isGloballyDisabled}
+                                onClick={() => handlePinProvider(config.client_id, p.id)}
+                                title={isPinned ? "已设为当前手动选项" : "点击设为当前手动选项"}
+                              >
+                                <Pin size={11} style={{ transform: isPinned ? "rotate(0deg)" : "rotate(45deg)" }} />
+                                {isPinned ? "已选定" : "选定此项"}
+                              </button>
+                            )}
                           </td>
-                          <td>
-                            <div
-                              className="switch-container"
+                          <td style={{ width: "15%" }}>
+                            <div style={{ display: "flex", justifyContent: "center" }}>
+                              <div
+                                className="switch-container"
                               style={{ cursor: isGloballyDisabled ? "not-allowed" : "pointer" }}
                               onClick={() => {
                                 if (isGloballyDisabled) {
@@ -175,8 +230,9 @@ export function ClientConfigTab({
                                 handleToggleClientProvider(config.client_id, p.id);
                               }}
                             >
-                              <div className={`switch-track ${p.is_active && !isGloballyDisabled ? "active" : ""}`}>
-                                <div className="switch-thumb"></div>
+                                <div className={`switch-track ${p.is_active && !isGloballyDisabled ? "active" : ""}`}>
+                                  <div className="switch-thumb"></div>
+                                </div>
                               </div>
                             </div>
                           </td>
@@ -240,7 +296,6 @@ export function ClientConfigTab({
                             </div>
                           </div>
                         </td>
-                        <td>-</td>
                         <td>-</td>
                         <td>
                           <button className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem" }} onClick={() => setAddingProviderForClient(null)}>取消</button>
@@ -406,51 +461,77 @@ export function ClientConfigTab({
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th style={{ width: "80px" }}>优先级</th>
-                        <th>供应商</th>
-                        <th>运行状态</th>
-                        <th style={{ width: "180px" }}>轮换权重</th>
-                        <th>启用状态</th>
+                        <th style={{ width: "40%" }}>供应商</th>
+                        <th style={{ width: "15%", textAlign: "center" }}>运行状态</th>
+                        <th style={{ width: "30%", textAlign: "center" }}>
+                          {cfg.strategy === "random" && "轮换权重"}
+                          {cfg.strategy === "manual" && "手动选择"}
+                          {cfg.strategy === "priority" && "优先级调整"}
+                        </th>
+                        <th style={{ width: "15%", textAlign: "center" }}>启用状态</th>
                       </tr>
                     </thead>
                     <tbody>
                       {cfg.providers.map((p, pIndex) => {
                         const globalProvider = providers.find(gp => gp.id === p.id);
                         const isGloballyDisabled = globalProvider ? !globalProvider.is_active : false;
+                        const isPinned = cfg.strategy === "manual" && (cfg.manual_provider_id ? p.id === cfg.manual_provider_id : pIndex === 0);
                         return (
-                          <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : {}}>
-                            <td>
-                              <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                                <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === 0 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, -1)}>↑</button>
-                                <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === cfg.providers.length - 1 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, 1)}>↓</button>
-                              </div>
-                            </td>
+                          <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : (cfg.strategy === "manual" && !isPinned ? { opacity: 0.4 } : {})}>
                             <td style={{ fontWeight: "600" }}>
-                              {p.name}
+                              <div style={{ display: "flex", alignItems: "center" }}>
+                                {p.name}
+                                {isPinned && (
+                                  <span style={{ marginLeft: "8px", fontSize: "0.65rem", fontWeight: "normal", padding: "2px 6px", borderRadius: "4px", backgroundColor: "hsl(var(--primary))", color: "#fff" }}>当前手动选择</span>
+                                )}
+                              </div>
                               <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{p.api_url}</div>
                             </td>
-                            <td>
+                            <td style={{ textAlign: "center" }}>
                               {isGloballyDisabled ? (
                                 <span className="status-badge" style={{ backgroundColor: "hsl(var(--danger) / 0.15)", color: "hsl(var(--danger))", border: "1px solid hsl(var(--danger) / 0.3)" }}>全局已禁用</span>
                               ) : (<span className="status-badge success">可用</span>)}
                             </td>
-                            <td>
-                              <input type="number" min="1" value={p.weight} disabled={isGloballyDisabled}
-                                onChange={(e) => handleWeightChange(cfg.client_id, p.id, Number(e.target.value))}
-                                style={{ width: "70px", padding: "3px 6px", borderRadius: "4px", border: "1px solid hsl(var(--border-color))", backgroundColor: "hsl(var(--bg-card))", color: "hsl(var(--text-primary))", cursor: isGloballyDisabled ? "not-allowed" : "text" }}
-                              />
+                            <td style={{ textAlign: "center" }}>
+                              {cfg.strategy === "priority" && (
+                                <div style={{ display: "inline-flex", gap: "4px", alignItems: "center" }}>
+                                  <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === 0 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, -1)}>↑</button>
+                                  <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === cfg.providers.length - 1 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, 1)}>↓</button>
+                                </div>
+                              )}
+                              {cfg.strategy === "random" && (
+                                <WeightInput
+                                  value={p.weight}
+                                  disabled={isGloballyDisabled}
+                                  onChange={(val) => handleWeightChange(cfg.client_id, p.id, val)}
+                                />
+                              )}
+                              {cfg.strategy === "manual" && (
+                                <button
+                                  className="btn-secondary"
+                                  style={{ padding: "4px 8px", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "5px", opacity: isPinned ? 0.6 : 1 }}
+                                  disabled={isPinned || isGloballyDisabled}
+                                  onClick={() => handlePinProvider(cfg.client_id, p.id)}
+                                  title={isPinned ? "已设为当前手动选项" : "点击设为当前手动选项"}
+                                >
+                                  <Pin size={11} style={{ transform: isPinned ? "rotate(0deg)" : "rotate(45deg)" }} />
+                                  {isPinned ? "已选定" : "选定此项"}
+                                </button>
+                              )}
                             </td>
-                            <td>
-                              <div className="switch-container" style={{ cursor: isGloballyDisabled ? "not-allowed" : "pointer" }}
-                                onClick={() => {
-                                  if (isGloballyDisabled) {
-                                    showToast(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`, "warning");
-                                    return;
-                                  }
-                                  handleToggleClientProvider(cfg.client_id, p.id);
-                                }}>
-                                <div className={`switch-track ${p.is_active && !isGloballyDisabled ? "active" : ""}`}>
-                                  <div className="switch-thumb"></div>
+                            <td style={{ width: "15%" }}>
+                              <div style={{ display: "flex", justifyContent: "center" }}>
+                                <div className="switch-container" style={{ cursor: isGloballyDisabled ? "not-allowed" : "pointer" }}
+                                  onClick={() => {
+                                    if (isGloballyDisabled) {
+                                      showToast(`供应商「${p.name}」已在全局供应商管理中禁用，请先前往供应商管理页面重新启用。`, "warning");
+                                      return;
+                                    }
+                                    handleToggleClientProvider(cfg.client_id, p.id);
+                                  }}>
+                                  <div className={`switch-track ${p.is_active && !isGloballyDisabled ? "active" : ""}`}>
+                                    <div className="switch-thumb"></div>
+                                  </div>
                                 </div>
                               </div>
                             </td>
@@ -490,7 +571,7 @@ export function ClientConfigTab({
                               ]}
                             />
                           </td>
-                          <td>-</td><td>-</td>
+                          <td>-</td>
                           <td><button className="btn-secondary" style={{ padding: "3px 7px", fontSize: "0.7rem" }} onClick={() => setAddingProviderForClient(null)}>取消</button></td>
                         </tr>
                       )}

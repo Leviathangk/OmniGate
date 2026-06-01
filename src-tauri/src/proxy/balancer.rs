@@ -91,9 +91,19 @@ impl Balancer {
                 attached_providers = reordered;
             }
             "manual" => {
-                // 手动模式：只取 sort_order 最小的那一个，不做轮换
+                // 手动模式：优先取 manual_provider_id，否则取优先级最高
                 attached_providers.sort_by_key(|p| p.sort_order);
-                attached_providers.truncate(1);
+                if let Some(ref manual_id) = config.manual_provider_id {
+                    if let Some(pos) = attached_providers.iter().position(|p| p.id == *manual_id) {
+                        let selected = attached_providers.remove(pos);
+                        attached_providers.clear();
+                        attached_providers.push(selected);
+                    } else {
+                        attached_providers.truncate(1);
+                    }
+                } else {
+                    attached_providers.truncate(1);
+                }
             }
             _ => {
                 // 默认退化为优先级顺序

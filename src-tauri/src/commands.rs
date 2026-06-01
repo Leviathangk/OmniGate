@@ -91,6 +91,7 @@ pub struct ClientConfigDto {
     pub strategy: String,
     pub retry_count: u32,
     pub timeout_seconds: u32,
+    pub manual_provider_id: Option<String>,
     pub providers: Vec<ClientProviderDto>,
 }
 
@@ -806,6 +807,7 @@ pub fn get_client_configs(
             strategy: c.strategy,
             retry_count: c.retry_count,
             timeout_seconds: c.timeout_seconds,
+            manual_provider_id: c.manual_provider_id,
             providers,
         });
     }
@@ -825,6 +827,7 @@ pub fn save_client_configs(
             strategy: c.strategy.clone(),
             retry_count: c.retry_count,
             timeout_seconds: c.timeout_seconds,
+            manual_provider_id: c.manual_provider_id.clone(),
         };
         let mut provider_rows = Vec::new();
         for p in c.providers {

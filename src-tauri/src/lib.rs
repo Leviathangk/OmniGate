@@ -8,7 +8,7 @@ use tauri::Manager;
 use tauri::Emitter;
 use database::DbManager;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
 pub struct AppState {
     pub db: Arc<DbManager>,

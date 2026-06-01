@@ -11,11 +11,4 @@ pub struct ProxyProvider {
     pub sort_order: u32,
 }
 
-#[derive(Debug, Clone)]
-pub struct ProxyConfig {
-    pub client_id: String,
-    pub providers: Vec<ProxyProvider>,
-    pub strategy: String,
-    pub retry_count: u32,
-    pub timeout_seconds: u32,
-}
+

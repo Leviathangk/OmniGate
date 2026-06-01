@@ -158,6 +158,7 @@ export interface ClientConfig {
   strategy: string;
   retry_count: number;
   timeout_seconds: number;
+  manual_provider_id?: string;
   providers: Provider[];
 }
 

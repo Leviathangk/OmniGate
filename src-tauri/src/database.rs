@@ -95,6 +95,7 @@ pub struct ClientConfigRow {
     pub strategy: String,
     pub retry_count: u32,
     pub timeout_seconds: u32,
+    pub manual_provider_id: Option<String>,
 }
 
 pub struct ClientConfigProviderRow {
@@ -396,6 +397,7 @@ impl DbManager {
                 strategy TEXT NOT NULL,
                 retry_count INTEGER NOT NULL,
                 timeout_seconds INTEGER NOT NULL,
+                manual_provider_id TEXT,
                 updated_at INTEGER NOT NULL
             );",
             [],
@@ -423,6 +425,9 @@ impl DbManager {
         
         // 尝试添加 is_mapped_default 字段
         let _ = conn.execute("ALTER TABLE models ADD COLUMN is_mapped_default INTEGER DEFAULT 0", []);
+
+        // 尝试添加 manual_provider_id 字段
+        let _ = conn.execute("ALTER TABLE client_configs ADD COLUMN manual_provider_id TEXT", []);
 
         Ok(())
     }
@@ -719,7 +724,7 @@ impl DbManager {
     pub fn get_client_configs(&self) -> Result<Vec<ClientConfigRow>, String> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT client_id, is_enabled, strategy, retry_count, timeout_seconds FROM client_configs;"
+            "SELECT client_id, is_enabled, strategy, retry_count, timeout_seconds, manual_provider_id FROM client_configs;"
         ).map_err(|e| e.to_string())?;
         
         let rows = stmt.query_map([], |row| {
@@ -729,6 +734,7 @@ impl DbManager {
                 strategy: row.get(2)?,
                 retry_count: row.get::<_, u32>(3)?,
                 timeout_seconds: row.get::<_, u32>(4)?,
+                manual_provider_id: row.get(5)?,
             })
         }).map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
@@ -765,9 +771,9 @@ impl DbManager {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         
         tx.execute(
-            "INSERT OR REPLACE INTO client_configs (client_id, is_enabled, strategy, retry_count, timeout_seconds, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
-            rusqlite::params![config.client_id, config.is_enabled as i64, config.strategy, config.retry_count, config.timeout_seconds, now],
+            "INSERT OR REPLACE INTO client_configs (client_id, is_enabled, strategy, retry_count, timeout_seconds, manual_provider_id, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);",
+            rusqlite::params![config.client_id, config.is_enabled as i64, config.strategy, config.retry_count, config.timeout_seconds, config.manual_provider_id, now],
         ).map_err(|e| e.to_string())?;
         
         tx.execute(
