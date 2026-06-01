@@ -1735,7 +1735,7 @@ function App() {
           </div>
           <div className="logo-info">
             <h1>OmniGate</h1>
-            <span>AI账号轮换管理器 v0.1.5</span>
+            <span>AI账号轮换管理器 v{__APP_VERSION__}</span>
           </div>
         </div>
 
