@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, AlertTriangle, FileText, Pin, Minus } from "lucide-react";
+import { Plus, AlertTriangle, FileText, Pin, Minus, Dices, BarChart2, Zap, Globe } from "lucide-react";
 import { CustomSelect, Provider, ClientConfig } from "../../App";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -151,25 +151,8 @@ export function ClientConfigTab({
               </p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "5px", background: "hsl(var(--bg-secondary))", padding: "4px", borderRadius: "8px" }}>
-                <button
-                  className={`tab-select-btn ${config.operation_mode !== "direct" ? "active" : ""}`}
-                  style={{ padding: "4px 12px", fontSize: "0.8rem", margin: 0, borderRadius: "6px" }}
-                  onClick={() => handleToggleMode(config.client_id, "proxy")}
-                >
-                  🟢 代理接管
-                </button>
-                <button
-                  className={`tab-select-btn ${config.operation_mode === "direct" ? "active" : ""}`}
-                  style={{ padding: "4px 12px", fontSize: "0.8rem", margin: 0, borderRadius: "6px" }}
-                  onClick={() => handleToggleMode(config.client_id, "direct")}
-                >
-                  ⚡️ 直连写入
-                </button>
-              </div>
-
               {config.operation_mode !== "direct" && (
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", borderLeft: "1px solid hsl(var(--border-color))", paddingLeft: "20px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", borderRight: "1px solid hsl(var(--border-color))", paddingRight: "20px" }}>
                   <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
                   <div className="switch-container" onClick={() => handleToggleClient(config.client_id)}>
                     <div className={`switch-track ${config.is_enabled ? "active" : ""}`}>
@@ -178,6 +161,33 @@ export function ClientConfigTab({
                   </div>
                 </div>
               )}
+
+              <div style={{ display: "flex", alignItems: "center", gap: "4px", background: "hsl(var(--bg-secondary) / 0.5)", padding: "4px", borderRadius: "8px", border: "1px solid hsl(var(--border-color))" }}>
+                <button
+                  style={{ 
+                    padding: "6px 14px", fontSize: "0.8rem", margin: 0, borderRadius: "6px", display: "flex", alignItems: "center", border: "none", cursor: "pointer", transition: "all 0.2s",
+                    background: config.operation_mode !== "direct" ? "hsl(var(--primary))" : "transparent",
+                    color: config.operation_mode !== "direct" ? "white" : "hsl(var(--text-secondary))",
+                    fontWeight: config.operation_mode !== "direct" ? "600" : "500",
+                    boxShadow: config.operation_mode !== "direct" ? "0 2px 8px rgba(0,0,0,0.2)" : "none"
+                  }}
+                  onClick={() => handleToggleMode(config.client_id, "proxy")}
+                >
+                  <Globe size={14} style={{ marginRight: "4px" }} /> 代理接管
+                </button>
+                <button
+                  style={{ 
+                    padding: "6px 14px", fontSize: "0.8rem", margin: 0, borderRadius: "6px", display: "flex", alignItems: "center", border: "none", cursor: "pointer", transition: "all 0.2s",
+                    background: config.operation_mode === "direct" ? "hsl(var(--primary))" : "transparent",
+                    color: config.operation_mode === "direct" ? "white" : "hsl(var(--text-secondary))",
+                    fontWeight: config.operation_mode === "direct" ? "600" : "500",
+                    boxShadow: config.operation_mode === "direct" ? "0 2px 8px rgba(0,0,0,0.2)" : "none"
+                  }}
+                  onClick={() => handleToggleMode(config.client_id, "direct")}
+                >
+                  <Zap size={14} style={{ marginRight: "4px" }} /> 直连写入
+                </button>
+              </div>
             </div>
           </div>
 
@@ -188,15 +198,15 @@ export function ClientConfigTab({
               <h4 style={{ fontSize: "0.88rem", fontWeight: "600", marginBottom: "12px" }}>供应商使用策略</h4>
               <div className="strategy-row">
                 <div className={`strategy-card ${config.strategy === "random" ? "active" : ""}`} onClick={() => handleStrategyChange(config.client_id, "random")}>
-                  <h4>🎲 随机切换 (负载均衡)</h4>
+                  <h4><Dices size={16} style={{ marginRight: "6px", position: "relative", top: "2px" }} />随机切换 (负载均衡)</h4>
                   <p>根据设置的权重在所有启用的供应商中进行分配，实现最优防风控策略。</p>
                 </div>
                 <div className={`strategy-card ${config.strategy === "priority" ? "active" : ""}`} onClick={() => handleStrategyChange(config.client_id, "priority")}>
-                  <h4>📶 优先级顺序</h4>
+                  <h4><BarChart2 size={16} style={{ marginRight: "6px", position: "relative", top: "2px", transform: "rotate(90deg)" }} />优先级顺序</h4>
                   <p>严格按照优先级降序（权重顺序）发起请求，当前首选失效时自动启用降级供应商。</p>
                 </div>
                 <div className={`strategy-card ${config.strategy === "manual" ? "active" : ""}`} onClick={() => handleStrategyChange(config.client_id, "manual")}>
-                  <h4>📌 手动选择</h4>
+                  <h4><Pin size={16} style={{ marginRight: "6px", position: "relative", top: "2px" }} />手动选择</h4>
                   <p>固定指定某一个特定账号作为唯一转发终点，不开启轮换模式。</p>
                 </div>
               </div>
@@ -548,15 +558,15 @@ export function ClientConfigTab({
                 <h5 style={{ fontSize: "0.82rem", fontWeight: "600", marginBottom: "10px" }}>供应商使用策略</h5>
                 <div className="strategy-row">
                   <div className={`strategy-card ${cfg.strategy === "random" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "random")}>
-                    <h4>🎲 随机切换 (负载均衡)</h4>
+                    <h4><Dices size={16} style={{ marginRight: "6px", position: "relative", top: "2px" }} />随机切换 (负载均衡)</h4>
                     <p>根据权重在所有启用供应商中随机分配。</p>
                   </div>
                   <div className={`strategy-card ${cfg.strategy === "priority" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "priority")}>
-                    <h4>📶 优先级顺序</h4>
+                    <h4><BarChart2 size={16} style={{ marginRight: "6px", position: "relative", top: "2px", transform: "rotate(90deg)" }} />优先级顺序</h4>
                     <p>严格按优先级降序，前者失效自动降级。</p>
                   </div>
                   <div className={`strategy-card ${cfg.strategy === "manual" ? "active" : ""}`} onClick={() => handleStrategyChange(cfg.client_id, "manual")}>
-                    <h4>📌 手动选择</h4>
+                    <h4><Pin size={16} style={{ marginRight: "6px", position: "relative", top: "2px" }} />手动选择</h4>
                     <p>固定指定单一供应商，不开启轮换。</p>
                   </div>
                 </div>
@@ -724,25 +734,8 @@ export function ClientConfigTab({
                   </p>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "5px", background: "hsl(var(--bg-secondary))", padding: "4px", borderRadius: "8px" }}>
-                    <button
-                      className={`tab-select-btn ${masterCfg.operation_mode !== "direct" ? "active" : ""}`}
-                      style={{ padding: "4px 12px", fontSize: "0.8rem", margin: 0, borderRadius: "6px" }}
-                      onClick={() => handleToggleMode(masterCfg.client_id, "proxy")}
-                    >
-                      🟢 代理接管
-                    </button>
-                    <button
-                      className={`tab-select-btn ${masterCfg.operation_mode === "direct" ? "active" : ""}`}
-                      style={{ padding: "4px 12px", fontSize: "0.8rem", margin: 0, borderRadius: "6px" }}
-                      onClick={() => handleToggleMode(masterCfg.client_id, "direct")}
-                    >
-                      ⚡️ 直连写入
-                    </button>
-                  </div>
-
                   {masterCfg.operation_mode !== "direct" && (
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px", borderLeft: "1px solid hsl(var(--border-color))", paddingLeft: "20px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", borderRight: "1px solid hsl(var(--border-color))", paddingRight: "20px" }}>
                       <span style={{ fontSize: "0.82rem", fontWeight: "600" }}>接管状态:</span>
                       <div className="switch-container" onClick={() => handleToggleClient("opencode")}>
                         <div className={`switch-track ${masterCfg.is_enabled ? "active" : ""}`}>
@@ -751,6 +744,33 @@ export function ClientConfigTab({
                       </div>
                     </div>
                   )}
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "4px", background: "hsl(var(--bg-secondary) / 0.5)", padding: "4px", borderRadius: "8px", border: "1px solid hsl(var(--border-color))" }}>
+                    <button
+                      style={{ 
+                        padding: "6px 14px", fontSize: "0.8rem", margin: 0, borderRadius: "6px", display: "flex", alignItems: "center", border: "none", cursor: "pointer", transition: "all 0.2s",
+                        background: masterCfg.operation_mode !== "direct" ? "hsl(var(--primary))" : "transparent",
+                        color: masterCfg.operation_mode !== "direct" ? "white" : "hsl(var(--text-secondary))",
+                        fontWeight: masterCfg.operation_mode !== "direct" ? "600" : "500",
+                        boxShadow: masterCfg.operation_mode !== "direct" ? "0 2px 8px rgba(0,0,0,0.2)" : "none"
+                      }}
+                      onClick={() => handleToggleMode(masterCfg.client_id, "proxy")}
+                    >
+                      <Globe size={14} style={{ marginRight: "4px" }} /> 代理接管
+                    </button>
+                    <button
+                      style={{ 
+                        padding: "6px 14px", fontSize: "0.8rem", margin: 0, borderRadius: "6px", display: "flex", alignItems: "center", border: "none", cursor: "pointer", transition: "all 0.2s",
+                        background: masterCfg.operation_mode === "direct" ? "hsl(var(--primary))" : "transparent",
+                        color: masterCfg.operation_mode === "direct" ? "white" : "hsl(var(--text-secondary))",
+                        fontWeight: masterCfg.operation_mode === "direct" ? "600" : "500",
+                        boxShadow: masterCfg.operation_mode === "direct" ? "0 2px 8px rgba(0,0,0,0.2)" : "none"
+                      }}
+                      onClick={() => handleToggleMode(masterCfg.client_id, "direct")}
+                    >
+                      <Zap size={14} style={{ marginRight: "4px" }} /> 直连写入
+                    </button>
+                  </div>
                 </div>
               </div>
               {/* 注入说明 */}
