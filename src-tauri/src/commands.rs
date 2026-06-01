@@ -64,8 +64,6 @@ pub struct UsageOverview {
     pub active_models: usize,
     pub total_skills: usize,
     pub active_skills: usize,
-    pub total_mcp: usize,
-    pub active_mcp: usize,
     pub today_requests: usize,
     pub today_requests_growth: String,
     pub today_tokens: String,
@@ -272,30 +270,7 @@ pub fn update_model_mapping(
 // MCP Server & Skills
 // ============================================================================
 
-#[tauri::command]
-pub fn get_mcp_servers(
-    state: tauri::State<'_, crate::AppState>,
-) -> Result<Vec<McpServerDto>, String> {
-    let rows = state.db.get_all_mcp_servers()?;
-    let mut dtos = Vec::new();
-    for r in rows {
-        // args 存储为 JSON 字符串，反序列化为 Vec<String>
-        let args: Vec<String> = serde_json::from_str(&r.args)
-            .unwrap_or_default();
-        // env 存储为 JSON 字符串，反序列化为 HashMap<String, String>
-        let env: HashMap<String, String> = serde_json::from_str(&r.env)
-            .unwrap_or_default();
-        dtos.push(McpServerDto {
-            id: r.id,
-            name: r.name,
-            command: r.command,
-            args,
-            env,
-            is_active: r.is_active,
-        });
-    }
-    Ok(dtos)
-}
+
 
 #[tauri::command]
 pub fn get_skills(
@@ -322,7 +297,6 @@ pub fn get_usage_overview(
 ) -> Result<UsageOverview, String> {
     let (total_providers, active_providers) = state.db.count_providers()?;
     let (total_models, active_models) = state.db.count_models()?;
-    let (total_mcp, active_mcp) = state.db.count_mcp_servers()?;
     let (total_skills, active_skills) = state.db.count_skills()?;
 
     Ok(UsageOverview {
@@ -332,8 +306,6 @@ pub fn get_usage_overview(
         active_models,
         total_skills,
         active_skills,
-        total_mcp,
-        active_mcp,
         today_requests: 0,
         today_requests_growth: "0%".to_string(),
         today_tokens: "0".to_string(),
@@ -876,132 +848,6 @@ pub fn write_external_prompt(client_id: String, content: String, app_handle: tau
         }
     }
     std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
-}
-
-#[tauri::command]
-pub fn get_external_mcp_servers(client_id: String) -> Result<Vec<McpServerDto>, String> {
-    let mut dtos = Vec::new();
-    
-    if client_id == "claude" {
-        let path = if let Ok(home) = std::env::var("HOME") {
-            std::path::PathBuf::from(home).join(".claude.json")
-        } else {
-            std::path::PathBuf::from(".claude.json")
-        };
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(servers) = json.get("mcpServers").and_then(|s| s.as_object()) {
-                        for (name, conf) in servers {
-                            let command = conf.get("command").and_then(|c| c.as_str()).unwrap_or("").to_string();
-                            let mut args = Vec::new();
-                            if let Some(args_arr) = conf.get("args").and_then(|a| a.as_array()) {
-                                for a in args_arr {
-                                    if let Some(s) = a.as_str() { args.push(s.to_string()); }
-                                }
-                            }
-                            let mut env = HashMap::new();
-                            if let Some(env_obj) = conf.get("env").and_then(|e| e.as_object()) {
-                                for (k, v) in env_obj {
-                                    if let Some(s) = v.as_str() { env.insert(k.clone(), s.to_string()); }
-                                }
-                            }
-                            dtos.push(McpServerDto {
-                                id: format!("claude_{}", name),
-                                name: name.clone(),
-                                command,
-                                args,
-                                env,
-                                is_active: true,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    } else if client_id == "opencode" {
-        let path = if let Ok(home) = std::env::var("HOME") {
-            std::path::PathBuf::from(home).join(".config").join("opencode").join("opencode.json")
-        } else {
-            std::path::PathBuf::from(".config/opencode/opencode.json")
-        };
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(servers) = json.get("mcp").and_then(|s| s.as_object()) {
-                        for (name, conf) in servers {
-                            let mut command = "".to_string();
-                            let mut args = Vec::new();
-                            if let Some(cmd_arr) = conf.get("command").and_then(|c| c.as_array()) {
-                                if !cmd_arr.is_empty() {
-                                    command = cmd_arr[0].as_str().unwrap_or("").to_string();
-                                    for i in 1..cmd_arr.len() {
-                                        if let Some(s) = cmd_arr[i].as_str() { args.push(s.to_string()); }
-                                    }
-                                }
-                            }
-                            let is_active = conf.get("enabled").and_then(|b| b.as_bool()).unwrap_or(true);
-                            let mut env = HashMap::new();
-                            if let Some(env_obj) = conf.get("env").and_then(|e| e.as_object()) {
-                                for (k, v) in env_obj {
-                                    if let Some(s) = v.as_str() { env.insert(k.clone(), s.to_string()); }
-                                }
-                            }
-                            dtos.push(McpServerDto {
-                                id: format!("opencode_{}", name),
-                                name: name.clone(),
-                                command,
-                                args,
-                                env,
-                                is_active,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    } else if client_id == "codex" {
-        let path = if let Ok(home) = std::env::var("HOME") {
-            std::path::PathBuf::from(home).join(".codex").join("config.toml")
-        } else {
-            std::path::PathBuf::from(".codex/config.toml")
-        };
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(doc) = content.parse::<toml_edit::DocumentMut>() {
-                    if let Some(mcp) = doc.get("mcp").and_then(|m| m.as_table()) {
-                        for (name, item) in mcp.iter() {
-                            if let Some(conf) = item.as_table() {
-                                let command = conf.get("command").and_then(|c| c.as_str()).unwrap_or("").to_string();
-                                let mut args = Vec::new();
-                                if let Some(args_arr) = conf.get("args").and_then(|a| a.as_array()) {
-                                    for a in args_arr {
-                                        if let Some(s) = a.as_str() { args.push(s.to_string()); }
-                                    }
-                                }
-                                let mut env = HashMap::new();
-                                if let Some(env_table) = conf.get("env").and_then(|e| e.as_table()) {
-                                    for (k, v) in env_table.iter() {
-                                        if let Some(s) = v.as_str() { env.insert(k.to_string(), s.to_string()); }
-                                    }
-                                }
-                                dtos.push(McpServerDto {
-                                    id: format!("codex_{}", name),
-                                    name: name.to_string(),
-                                    command,
-                                    args,
-                                    env,
-                                    is_active: true,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    Ok(dtos)
 }
 
 // ============================================================================

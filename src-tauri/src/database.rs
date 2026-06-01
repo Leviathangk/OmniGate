@@ -72,15 +72,6 @@ pub struct ModelRow {
     pub is_mapped_default: bool,
 }
 
-pub struct McpRow {
-    pub id: String,
-    pub name: String,
-    pub command: String,
-    pub args: String,
-    pub env: String,
-    pub is_active: bool,
-}
-
 pub struct SkillRow {
     pub id: String,
     pub name: String,
@@ -633,30 +624,8 @@ impl DbManager {
     }
 
     // ============================================================================
-    // MCP & Skills 查询
+    // Skills 查询
     // ============================================================================
-
-    pub fn get_all_mcp_servers(&self) -> Result<Vec<McpRow>, String> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, name, command, args, env, is_active FROM mcp_servers ORDER BY created_at ASC;"
-        ).map_err(|e| e.to_string())?;
-
-        let rows = stmt.query_map([], |row| {
-            Ok(McpRow {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                command: row.get(2)?,
-                args: row.get(3)?,
-                env: row.get(4)?,
-                is_active: row.get::<_, i64>(5)? != 0,
-            })
-        }).map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-        Ok(rows)
-    }
 
     pub fn get_all_skills(&self) -> Result<Vec<SkillRow>, String> {
         let conn = self.conn.lock().unwrap();
@@ -705,16 +674,7 @@ impl DbManager {
         Ok((total as usize, active as usize))
     }
 
-    pub fn count_mcp_servers(&self) -> Result<(usize, usize), String> {
-        let conn = self.conn.lock().unwrap();
-        let total: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM mcp_servers;", [], |r| r.get(0)
-        ).map_err(|e| e.to_string())?;
-        let active: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM mcp_servers WHERE is_active = 1;", [], |r| r.get(0)
-        ).map_err(|e| e.to_string())?;
-        Ok((total as usize, active as usize))
-    }
+
 
     pub fn count_skills(&self) -> Result<(usize, usize), String> {
         let conn = self.conn.lock().unwrap();

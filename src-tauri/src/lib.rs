@@ -49,7 +49,6 @@ pub fn run() {
                             
                             let (total_providers, active_providers) = db_for_events.count_providers().unwrap_or((0, 0));
                             let (total_models, active_models) = db_for_events.count_models().unwrap_or((0, 0));
-                            let (total_mcp, active_mcp) = db_for_events.count_mcp_servers().unwrap_or((0, 0));
                             let (total_skills, active_skills) = db_for_events.count_skills().unwrap_or((0, 0));
                             
                             let overview = serde_json::json!({
@@ -59,8 +58,6 @@ pub fn run() {
                                 "active_models": active_models,
                                 "total_skills": total_skills,
                                 "active_skills": active_skills,
-                                "total_mcp": total_mcp,
-                                "active_mcp": active_mcp,
                                 "today_requests": 0,
                                 "today_requests_growth": "0%",
                                 "today_tokens": "0",
@@ -105,7 +102,6 @@ pub fn run() {
             commands::toggle_model,
             commands::update_model_mapping,
             commands::update_model_mapped_default,
-            commands::get_mcp_servers,
             commands::get_skills,
             commands::get_usage_overview,
             commands::discover_models,
@@ -125,8 +121,7 @@ pub fn run() {
             commands::get_heatmap_data,
             commands::check_cli_installed,
             commands::read_external_prompt,
-            commands::write_external_prompt,
-            commands::get_external_mcp_servers
+            commands::write_external_prompt
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

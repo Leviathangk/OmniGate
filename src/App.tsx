@@ -8,7 +8,6 @@ import {
   Cpu,
   Sliders,
   Brain,
-  Boxes,
   Settings,
   Sun,
   Moon,
@@ -33,7 +32,6 @@ import {
 } from "lucide-react";
 import "./App.css";
 // recharts removed
-import { McpDisplay } from "./components/mcp";
 import { OverviewTab } from "./components/tabs/OverviewTab";
 import { ProvidersTab } from "./components/tabs/ProvidersTab";
 import { ClientConfigTab } from "./components/tabs/ClientConfigTab";
@@ -111,14 +109,7 @@ export interface ImportPreviewItem {
   isImported: boolean;
 }
 
-interface McpServer {
-  id: string;
-  name: string;
-  command: string;
-  args: string[];
-  env: Record<string, string>;
-  is_active: boolean;
-}
+
 
 export interface Skill {
   id: string;
@@ -133,8 +124,6 @@ interface UsageOverview {
   active_providers: number;
   total_models: number;
   active_models: number;
-  total_mcp: number;
-  active_mcp: number;
   today_requests: number;
   today_requests_growth: string;
   today_tokens: string;
@@ -694,13 +683,11 @@ function App() {
   const [overviewData, setOverviewData] = useState<UsageOverview>({
     total_providers: 0, active_providers: 0,
     total_models: 0, active_models: 0,
-    total_mcp: 0, active_mcp: 0,
     today_requests: 0, today_requests_growth: "+0%",
     today_tokens: "0", today_tokens_growth: "+0%"
   });
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<Model[]>([]);
-  const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
 
 
   // Codex 拦截代理状态
@@ -782,11 +769,6 @@ function App() {
   // 向导中已选中（要添加）的模型名称列表
   const [selectedFetchedModelNames, setSelectedFetchedModelNames] = useState<string[]>([]);
   
-  // 新建 MCP 状态
-  const [newMcpName, setNewMcpName] = useState<string>("");
-  const [newMcpCmd, setNewMcpCmd] = useState<string>("");
-  const [newMcpArgs, setNewMcpArgs] = useState<string>("");
-  
 
   // 供应商详情与模型管理弹窗状态
   const [selectedProviderForDetails, setSelectedProviderForDetails] = useState<Provider | null>(null);
@@ -863,10 +845,9 @@ function App() {
   // 加载核心数据（从真实 SQLite 后端）
   const loadData = async () => {
     try {
-      const [overview, provList, mcpList, loadedClientConfigs, traffic, recent, dist, heatmap] = await Promise.all([
+      const [overview, provList, loadedClientConfigs, traffic, recent, dist, heatmap] = await Promise.all([
         invoke<UsageOverview>("get_usage_overview"),
         invoke<Provider[]>("get_providers"),
-        invoke<McpServer[]>("get_mcp_servers"),
 
         invoke<ClientConfig[]>("get_client_configs"),
         invoke<TrafficPoint[]>("get_today_traffic_trend"),
@@ -880,7 +861,6 @@ function App() {
       setHeatmapData(heatmap);
       setOverviewData(overview);
       setProviders(provList);
-      setMcpServers(mcpList);
 
       let targetConfigs = loadedClientConfigs;
       if (loadedClientConfigs && loadedClientConfigs.length > 0) {
@@ -890,9 +870,9 @@ function App() {
           { client_id: "claude",          is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
           { client_id: "codex",           is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
           { client_id: "opencode",        is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
-          { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
-          { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
-          { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+          { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+          { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+          { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
         ];
         const mergedConfigs = defaultClientConfigs.map(def => {
           const fromDb = loadedClientConfigs.find((c: ClientConfig) => c.client_id === def.client_id);
@@ -924,9 +904,9 @@ function App() {
             { client_id: "claude",          is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
             { client_id: "codex",           is_enabled: false, strategy: "priority", retry_count: 3, timeout_seconds: 45,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
             { client_id: "opencode",        is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
-            { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
-            { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
-            { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30,  operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+            { client_id: "opencode-claude", is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+            { client_id: "opencode-resp",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
+            { client_id: "opencode-chat",   is_enabled: false, strategy: "priority", retry_count: 2, timeout_seconds: 30, operation_mode: "proxy", direct_provider_id: undefined, providers: [] },
           ]
         });
         // 完成后允许 auto-save
@@ -1479,10 +1459,6 @@ function App() {
     }));
   };
 
-  const handleToggleMcp = (id: string) => {
-    setMcpServers(prev => prev.map(s => s.id === id ? { ...s, is_active: !s.is_active } : s));
-  };
-
   // 详情：手动添加单个模型
   const handleManualAddModel = async () => {
     if (!selectedProviderForDetails) return;
@@ -1585,30 +1561,6 @@ function App() {
 
 
 
-  // 添加 MCP 服务
-  const handleAddMcp = () => {
-    if (!newMcpName || !newMcpCmd) return;
-    const newMcp: McpServer = {
-      id: "mcp_" + Math.random().toString(36).substring(7),
-      name: newMcpName,
-      command: newMcpCmd,
-      args: newMcpArgs ? newMcpArgs.split(",").map(a => a.trim()) : [],
-      env: {},
-      is_active: true
-    };
-    setMcpServers(prev => [...prev, newMcp]);
-    setOverviewData(prev => ({
-      ...prev,
-      total_mcp: prev.total_mcp + 1,
-      active_mcp: prev.active_mcp + 1
-    }));
-    setNewMcpName("");
-    setNewMcpCmd("");
-    setNewMcpArgs("");
-    alert("MCP 服务添加成功！");
-  };
-
-
   const renderCliMask = (clientId: string) => {
     if (cliStatus[clientId]) return null;
     const dirName = clientId === "opencode" ? "~/.config/opencode" : `~/.${clientId}`;
@@ -1694,11 +1646,6 @@ function App() {
               <div className="menu-icon"><FileText size={17} /></div>
               <span>全局提示词</span>
             </li>
-
-            <li className={`menu-item ${activeTab === "mcp" ? "active" : ""}`} onClick={() => setActiveTab("mcp")}>
-              <div className="menu-icon"><Boxes size={17} /></div>
-              <span>MCP 服务管理</span>
-            </li>
           </ul>
         </div>
 
@@ -1708,7 +1655,7 @@ function App() {
           <ul className="menu-list">
             <li className={`menu-item ${activeTab === "settings" ? "active" : ""}`} onClick={() => setActiveTab("settings")}>
               <div className="menu-icon"><Settings size={17} /></div>
-              <span>系统设置</span>
+              <span>系统全局设置</span>
             </li>
           </ul>
         </div>
@@ -1746,7 +1693,6 @@ function App() {
               {activeTab === "providers" && "供应商管理"}
               {activeTab === "client_config" && "本地客户端配置接管"}
               {activeTab === "global_prompts" && "一站式原生全局提示词管理"}
-              {activeTab === "mcp" && "MCP (Model Context Protocol) 插件"}
               {activeTab === "stats" && "审计分析统计"}
               {activeTab === "settings" && "系统全局设置"}
             </h2>
@@ -1756,7 +1702,6 @@ function App() {
               {activeTab === "models" && "跨账户管理大模型激活列表及自动发现"}
               {activeTab === "client_config" && "自定义 AI 开发工具轮换策略及负载权重"}
               {activeTab === "global_prompts" && "直接管控散落于系统各处的 CLI 原生系统人设"}
-              {activeTab === "mcp" && "开启本地/远程 MCP 工具服务器连接"}
               {activeTab === "stats" && "多协议吞吐审计、模型活跃度及 Latency 耗时热图"}
               {activeTab === "settings" && "配置默认接管端口、重试及降级逻辑"}
             </p>
@@ -1859,68 +1804,7 @@ function App() {
 
 
 
-          {/* ============================================================================
-              TAB: MCP (MCP 服务管理)
-             ============================================================================ */}
-          {activeTab === "mcp" && (
-            <McpDisplay />
-          )}
 
-          {activeTab === "mcp_legacy" && (
-            <div>
-              <div className="dashboard-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-                <div className="panel-card">
-                  <div className="card-header-row">
-                    <h3>添加新工具 MCP Server</h3>
-                  </div>
-                  <div className="form-group">
-                    <label>MCP 服务名称</label>
-                    <input placeholder="e.g. memory-server" value={newMcpName} onChange={(e) => setNewMcpName(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>执行命令 (Command)</label>
-                    <input placeholder="e.g. node, npx, docker" value={newMcpCmd} onChange={(e) => setNewMcpCmd(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>参数列表 (Args, 用逗号分割)</label>
-                    <input placeholder="e.g. -y, @modelcontextprotocol/server-memory" value={newMcpArgs} onChange={(e) => setNewMcpArgs(e.target.value)} />
-                  </div>
-                  <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={handleAddMcp}><Plus size={16} /> 一键连接加载</button>
-                </div>
-
-                <div className="panel-card">
-                  <div className="card-header-row">
-                    <h3>已载入的 MCP 扩展组件</h3>
-                  </div>
-                  <div className="list-group">
-                    {mcpServers.map((server, i) => (
-                      <div className="list-item-card" key={i} style={{ display: "block", borderLeft: server.is_active ? "3px solid hsl(var(--secondary))" : "3px solid transparent", marginBottom: "12px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                          <h4 style={{ fontSize: "0.94rem" }}>{server.name}</h4>
-                          <div className="switch-container" onClick={() => handleToggleMcp(server.id)}>
-                            <div className={`switch-track ${server.is_active ? "active" : ""}`}>
-                              <div className="switch-thumb"></div>
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: "0.76rem", color: "var(--text-secondary)", marginBottom: "4px" }}>
-                          <strong>执行指令:</strong> <code style={{ color: "hsl(var(--primary))" }}>{server.command} {server.args.join(" ")}</code>
-                        </div>
-                        {Object.keys(server.env).length > 0 && (
-                          <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "6px" }}>
-                            <strong>环境变量:</strong> &nbsp;
-                            {Object.entries(server.env).map(([k, v]) => (
-                              <span key={k} style={{ display: "inline-block", background: "hsl(var(--border-color))", padding: "2px 6px", borderRadius: "4px", marginRight: "6px" }}>{k}={v}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
 
           {/* ============================================================================

@@ -1,5 +1,5 @@
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { Server, Cpu, Brain, Boxes } from "lucide-react";
+import { Server, Cpu, Activity, Hash } from "lucide-react";
 
 
 // 也可以将接口复制过来，为了零逻辑修改，可以从 App.tsx 导出这些类型，或者在组件内部引用。
@@ -59,19 +59,19 @@ export function OverviewTab({
           </div>
         </div>
         <div className="stat-card green">
-          <div className="stat-icon-container"><Brain size={20} /></div>
+          <div className="stat-icon-container"><Activity size={20} /></div>
           <div className="stat-info">
-            <p>Skill 技能数</p>
-            <h3>{overviewData.total_skills} 个</h3>
-            <div className="stat-sub">已启用: <strong>{overviewData.active_skills} 个</strong></div>
+            <p>今日请求总数</p>
+            <h3>{overviewData.today_requests} 次</h3>
+            <div className="stat-sub">较昨日: <strong>{overviewData.today_requests_growth}</strong></div>
           </div>
         </div>
         <div className="stat-card orange">
-          <div className="stat-icon-container"><Boxes size={20} /></div>
+          <div className="stat-icon-container"><Hash size={20} /></div>
           <div className="stat-info">
-            <p>MCP 服务端</p>
-            <h3>{overviewData.total_mcp} 个</h3>
-            <div className="stat-sub">已连接: <strong>{overviewData.active_mcp} 个</strong></div>
+            <p>今日消耗 Tokens</p>
+            <h3>{overviewData.today_tokens}</h3>
+            <div className="stat-sub">较昨日: <strong>{overviewData.today_tokens_growth}</strong></div>
           </div>
         </div>
       </div>
