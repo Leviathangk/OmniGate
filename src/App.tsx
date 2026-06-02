@@ -763,6 +763,12 @@ function App() {
   const [hijackProviderName, setHijackProviderName] = useState("custom");
   const [hasFetchedHijackInfo, setHasFetchedHijackInfo] = useState(false);
 
+  // 全局重试设置
+  const [globalMaxRetries, setGlobalMaxRetries] = useState<number>(2);
+  const [globalMaxRetryTimeout, setGlobalMaxRetryTimeout] = useState<number | "">(120);
+  const [globalRequestTimeout, setGlobalRequestTimeout] = useState<number>(120);
+  const globalSettingsReadyRef = useRef(false);
+
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error" | "warning" | "info">("success");
 
@@ -944,7 +950,7 @@ function App() {
   // 加载核心数据（从真实 SQLite 后端）
   const loadData = async () => {
     try {
-      const [overview, provList, loadedClientConfigs, traffic, recent, dist, heatmap] = await Promise.all([
+      const [overview, provList, loadedClientConfigs, traffic, recent, dist, heatmap, maxRetriesStr, maxRetryTimeoutStr, requestTimeoutStr] = await Promise.all([
         invoke<UsageOverview>("get_usage_overview"),
         invoke<Provider[]>("get_providers"),
 
@@ -953,6 +959,9 @@ function App() {
         invoke<RecentActivity[]>("get_recent_activities", { limit: 10 }),
         invoke<ModelUsage[]>("get_model_usage_distribution"),
         invoke<HeatmapData[]>("get_heatmap_data"),
+        invoke<string>("get_global_setting", { key: "max_retries", defaultVal: "2" }),
+        invoke<string>("get_global_setting", { key: "max_retry_timeout", defaultVal: "120" }),
+        invoke<string>("get_global_setting", { key: "request_timeout", defaultVal: "120" })
       ]);
       setTrafficTrend(traffic);
       setRecentActivities(recent);
@@ -960,6 +969,11 @@ function App() {
       setHeatmapData(heatmap);
       setOverviewData(overview);
       setProviders(provList);
+
+      setGlobalMaxRetries(parseInt(maxRetriesStr as string || "2"));
+      setGlobalMaxRetryTimeout(parseInt(maxRetryTimeoutStr as string || "120"));
+      setGlobalRequestTimeout(parseInt(requestTimeoutStr as string || "120"));
+      globalSettingsReadyRef.current = true;
 
       let targetConfigs = loadedClientConfigs;
       if (loadedClientConfigs && loadedClientConfigs.length > 0) {
@@ -1067,6 +1081,15 @@ function App() {
       })
       .catch(e => console.error("自动保存客户端配置失败:", e));
   }, [clientConfigs]);
+
+  // 同步全局设置
+  useEffect(() => {
+    if (globalSettingsReadyRef.current) {
+      invoke("set_global_setting", { key: "max_retries", value: globalMaxRetries.toString() }).catch(console.error);
+      invoke("set_global_setting", { key: "max_retry_timeout", value: (globalMaxRetryTimeout || 120).toString() }).catch(console.error);
+      invoke("set_global_setting", { key: "request_timeout", value: globalRequestTimeout.toString() }).catch(console.error);
+    }
+  }, [globalMaxRetries, globalMaxRetryTimeout, globalRequestTimeout]);
 
   // ============================================================================
   // 事件处理逻辑
@@ -2174,6 +2197,10 @@ function App() {
               generateRandomKey={generateRandomKey}
               hijackApiKey={hijackApiKey}
               setHijackApiKey={setHijackApiKey}
+              globalMaxRetries={globalMaxRetries}
+              setGlobalMaxRetries={setGlobalMaxRetries}
+              globalMaxRetryTimeout={globalMaxRetryTimeout}
+              setGlobalMaxRetryTimeout={setGlobalMaxRetryTimeout}
             />
           )}
 

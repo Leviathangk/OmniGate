@@ -1131,3 +1131,25 @@ pub fn update_tray_menu_state(
     
     Ok(())
 }
+
+// ============================================================================
+// Global Settings
+// ============================================================================
+
+#[tauri::command]
+pub fn get_global_setting(
+    key: String,
+    default_val: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<String, String> {
+    Ok(state.db.get_global_setting(&key, &default_val))
+}
+
+#[tauri::command]
+pub fn set_global_setting(
+    key: String,
+    value: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    state.db.set_global_setting(&key, &value)
+}

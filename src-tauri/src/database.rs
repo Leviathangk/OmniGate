@@ -519,6 +519,40 @@ impl DbManager {
         // 尝试添加 operation_mode 字段
         let _ = conn.execute("ALTER TABLE client_configs ADD COLUMN operation_mode TEXT DEFAULT 'proxy'", []);
 
+        // 8. 全局设置表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS global_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );",
+            [],
+        ).map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
+    // ============================================================================
+    // Global Settings
+    // ============================================================================
+
+    pub fn get_global_setting(&self, key: &str, default_val: &str) -> String {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = match conn.prepare("SELECT value FROM global_settings WHERE key = ?1") {
+            Ok(s) => s,
+            Err(_) => return default_val.to_string(),
+        };
+        match stmt.query_row(rusqlite::params![key], |row| row.get::<_, String>(0)) {
+            Ok(v) => v,
+            Err(_) => default_val.to_string(),
+        }
+    }
+
+    pub fn set_global_setting(&self, key: &str, value: &str) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO global_settings (key, value) VALUES (?1, ?2)",
+            rusqlite::params![key, value],
+        ).map_err(|e| e.to_string())?;
         Ok(())
     }
 

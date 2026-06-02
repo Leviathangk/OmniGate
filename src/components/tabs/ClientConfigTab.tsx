@@ -393,41 +393,7 @@ export function ClientConfigTab({
                 </table>
               </div>
             </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
-              <div className="form-group">
-                <label>单点请求超时限制</label>
-                <CustomSelect 
-                  value={config.timeout_seconds} 
-                  onChange={(v: string | number) => {
-                    const newTimeout = Number(v);
-                    setClientConfigs(prev => prev.map(c => c.client_id === config.client_id ? { ...c, timeout_seconds: newTimeout } : c));
-                  }}
-                  options={[
-                    { value: 30, label: "30 秒" },
-                    { value: 60, label: "60 秒" },
-                    { value: 120, label: "120 秒" },
-                    { value: 300, label: "300 秒" }
-                  ]}
-                />
-              </div>
-              <div className="form-group">
-                <label>首选失败重试上限</label>
-                <CustomSelect 
-                  value={config.retry_count} 
-                  onChange={(v: string | number) => {
-                    const newRetry = Number(v);
-                    setClientConfigs(prev => prev.map(c => c.client_id === config.client_id ? { ...c, retry_count: newRetry } : c));
-                  }}
-                  options={[
-                    { value: 0, label: "不重试" },
-                    { value: 1, label: "重试 1 次" },
-                    { value: 2, label: "重试 2 次" },
-                    { value: 3, label: "重试 3 次" }
-                  ]}
-                />
-              </div>
-              
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "20px", marginTop: "16px" }}>
               {config.client_id === "codex" && (
                 <div className="form-group" style={{ gridColumn: "1 / -1" }}>
                   <label style={{ display: "flex", justifyContent: "space-between" }}>
@@ -719,18 +685,6 @@ export function ClientConfigTab({
               </div>
 
               {/* 超时/重试 */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginTop: "14px" }}>
-                <div className="form-group">
-                  <label>单点请求超时限制</label>
-                  <CustomSelect value={cfg.timeout_seconds} onChange={(v: string | number) => setClientConfigs(prev => prev.map(c => c.client_id === cfg.client_id ? { ...c, timeout_seconds: Number(v) } : c))}
-                    options={[{ value: 30, label: "30 秒" }, { value: 60, label: "60 秒" }, { value: 120, label: "120 秒" }, { value: 300, label: "300 秒" }]} />
-                </div>
-                <div className="form-group">
-                  <label>首选失败重试上限</label>
-                  <CustomSelect value={cfg.retry_count} onChange={(v: string | number) => setClientConfigs(prev => prev.map(c => c.client_id === cfg.client_id ? { ...c, retry_count: Number(v) } : c))}
-                    options={[{ value: 0, label: "不重试" }, { value: 1, label: "重试 1 次" }, { value: 2, label: "重试 2 次" }, { value: 3, label: "重试 3 次" }]} />
-                </div>
-              </div>
             </div>
           );
         };

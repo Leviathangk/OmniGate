@@ -1,5 +1,6 @@
 
 import { Database, Info, Trash2 } from "lucide-react";
+import { CustomSelect } from "../../App";
 
 interface SettingsTabProps {
   settingsSubTab: string;
@@ -9,6 +10,10 @@ interface SettingsTabProps {
   generateRandomKey: () => void;
   hijackApiKey: string;
   setHijackApiKey: (key: string) => void;
+  globalMaxRetries: number;
+  setGlobalMaxRetries: (val: number) => void;
+  globalMaxRetryTimeout: number | "";
+  setGlobalMaxRetryTimeout: (val: number | "") => void;
 }
 
 export function SettingsTab({
@@ -18,7 +23,11 @@ export function SettingsTab({
   setHijackBaseUrl,
   generateRandomKey,
   hijackApiKey,
-  setHijackApiKey
+  setHijackApiKey,
+  globalMaxRetries,
+  setGlobalMaxRetries,
+  globalMaxRetryTimeout,
+  setGlobalMaxRetryTimeout
 }: SettingsTabProps) {
   return (
     <div>
@@ -58,6 +67,51 @@ export function SettingsTab({
               onChange={e => setHijackApiKey(e.target.value)} 
               placeholder="点击右上角随机生成..." 
             />
+          </div>
+        </div>
+      )}
+
+      {settingsSubTab === "proxy" && (
+        <div className="panel-card" style={{ marginTop: "16px" }}>
+          <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "8px" }}>全局网络防风控与重试策略</h3>
+          <p style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: "20px" }}>当上游大模型 API 返回 429 Rate Limit 或 502 等临时错误时，OmniGate 将自动启用指数级退避重试 (Exponential Backoff)。重试间隔会以 2s, 4s, 8s 递增直到触发单次最大延迟。</p>
+          
+          <div className="form-group" style={{ marginBottom: "16px" }}>
+            <label>全局失败重试上限</label>
+            <CustomSelect 
+              value={globalMaxRetries.toString()}
+              onChange={(val) => setGlobalMaxRetries(parseInt(val as string))}
+              options={[
+                { value: "3", label: "3" },
+                { value: "5", label: "5" },
+                { value: "10", label: "10" },
+                { value: "15", label: "15" },
+                { value: "-1", label: "无限" }
+              ]}
+            />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: "24px" }}>
+            <label>最大单次重试等待时间 (秒)</label>
+            <input 
+              type="number" 
+              className="modal-input" 
+              value={globalMaxRetryTimeout} 
+              onChange={e => {
+                const val = e.target.value;
+                if (val === "") setGlobalMaxRetryTimeout("");
+                else setGlobalMaxRetryTimeout(parseInt(val));
+              }}
+              onBlur={() => {
+                if (globalMaxRetryTimeout === "" || (globalMaxRetryTimeout as number) < 1) {
+                  setGlobalMaxRetryTimeout(120);
+                }
+              }}
+              min="1"
+              max="300"
+              placeholder="默认 120" 
+            />
+            <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "6px" }}>决定指数递增的上限，例如设置为 30 秒，则重试间隔最大停留在 30 秒，防止过长的阻塞。</p>
           </div>
         </div>
       )}

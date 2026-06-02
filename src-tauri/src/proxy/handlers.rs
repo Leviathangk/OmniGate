@@ -85,8 +85,11 @@ pub async fn handle_claude_messages(
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),
     };
     
-    // 修复问题1：每个供应商独立重试 retry_count+1 次，耗尽后再换下一个供应商
-    let max_attempts = plan.retry_count as usize + 1;
+    // 修复问题1：每个供应商独立重试 max_attempts 次，耗尽后再换下一个供应商
+    let global_max_retries: i32 = state.db.get_global_setting("max_retries", "2").parse().unwrap_or(2);
+    let global_max_retry_timeout: u64 = state.db.get_global_setting("max_retry_timeout", "120").parse().unwrap_or(120);
+    let global_request_timeout: u64 = state.db.get_global_setting("request_timeout", "120").parse().unwrap_or(120);
+    let max_attempts = if global_max_retries == -1 { usize::MAX } else { global_max_retries as usize + 1 };
     let mut last_error = String::new();
     let mut all_providers_skipped = true;
 
@@ -188,14 +191,18 @@ pub async fn handle_claude_messages(
         }
 
         // --- 针对同一个供应商重试 max_attempts 次 ---
-        for _attempt in 0..max_attempts {
+        for attempt in 0..max_attempts {
+            if attempt > 0 {
+                let wait_secs = std::cmp::min(2.0_f64.powi(attempt as i32 - 1) as u64, global_max_retry_timeout);
+                tokio::time::sleep(Duration::from_secs(wait_secs)).await;
+            }
             let req = state.http_client.post(&upstream_url)
                 .headers(req_headers.clone())
                 .body(provider_body_bytes.clone());
             let start_time = Instant::now();
 
             let res_result = tokio::time::timeout(
-                Duration::from_secs(plan.timeout_seconds as u64),
+                Duration::from_secs(global_request_timeout),
                 req.send()
             ).await;
 
@@ -294,7 +301,10 @@ pub async fn handle_opencode_claude(
             "[OmniGate] OpenCode Claude 分组未配置任何可用的供应商。请在 OmniGate → 客户端配置 → OpenCode → Claude 协议中添加并启用供应商。").into_response()),
     };
 
-    let max_attempts = plan.retry_count as usize + 1;
+    let global_max_retries: i32 = state.db.get_global_setting("max_retries", "2").parse().unwrap_or(2);
+    let global_max_retry_timeout: u64 = state.db.get_global_setting("max_retry_timeout", "120").parse().unwrap_or(120);
+    let global_request_timeout: u64 = state.db.get_global_setting("request_timeout", "120").parse().unwrap_or(120);
+    let max_attempts = if global_max_retries == -1 { usize::MAX } else { global_max_retries as usize + 1 };
     let mut last_error = String::new();
 
     for provider in plan.providers.iter() {
@@ -329,12 +339,17 @@ pub async fn handle_opencode_claude(
             }
         }
 
-        for _attempt in 0..max_attempts {
+        // --- 针对同一个供应商重试 max_attempts 次 ---
+        for attempt in 0..max_attempts {
+            if attempt > 0 {
+                let wait_secs = std::cmp::min(2.0_f64.powi(attempt as i32 - 1) as u64, global_max_retry_timeout);
+                tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+            }
             let req = state.http_client.post(&upstream_url)
                 .headers(req_headers.clone())
                 .body(body_bytes.clone());
             let start_time = Instant::now();
-            let res_result = tokio::time::timeout(Duration::from_secs(plan.timeout_seconds as u64), req.send()).await;
+            let res_result = tokio::time::timeout(Duration::from_secs(global_request_timeout), req.send()).await;
             match res_result {
                 Ok(Ok(res)) => {
                     let status = res.status();
@@ -409,7 +424,10 @@ pub async fn handle_opencode_resp(
             "[OmniGate] OpenCode Responses 分组未配置任何可用的供应商。请在 OmniGate → 客户端配置 → OpenCode → Responses 协议中添加并启用供应商。").into_response()),
     };
 
-    let max_attempts = plan.retry_count as usize + 1;
+    let global_max_retries: i32 = state.db.get_global_setting("max_retries", "2").parse().unwrap_or(2);
+    let global_max_retry_timeout: u64 = state.db.get_global_setting("max_retry_timeout", "120").parse().unwrap_or(120);
+    let global_request_timeout: u64 = state.db.get_global_setting("request_timeout", "120").parse().unwrap_or(120);
+    let max_attempts = if global_max_retries == -1 { usize::MAX } else { global_max_retries as usize + 1 };
     let mut last_error = String::new();
 
     for provider in plan.providers.iter() {
@@ -452,12 +470,16 @@ pub async fn handle_opencode_resp(
             }
         }
 
-        for _attempt in 0..max_attempts {
+        for attempt in 0..max_attempts {
+            if attempt > 0 {
+                let wait_secs = std::cmp::min(2.0_f64.powi(attempt as i32 - 1) as u64, global_max_retry_timeout);
+                tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+            }
             let req = state.http_client.request(method.clone(), &upstream_url)
                 .headers(req_headers.clone())
                 .body(body_bytes.clone());
             let start_time = Instant::now();
-            let res_result = tokio::time::timeout(Duration::from_secs(plan.timeout_seconds as u64), req.send()).await;
+            let res_result = tokio::time::timeout(Duration::from_secs(global_request_timeout), req.send()).await;
             match res_result {
                 Ok(Ok(res)) => {
                     let status = res.status();
@@ -532,7 +554,10 @@ pub async fn handle_opencode_chat(
             "[OmniGate] OpenCode Chat 分组未配置任何可用的供应商。请在 OmniGate → 客户端配置 → OpenCode → Chat 协议中添加并启用供应商。").into_response()),
     };
 
-    let max_attempts = plan.retry_count as usize + 1;
+    let global_max_retries: i32 = state.db.get_global_setting("max_retries", "2").parse().unwrap_or(2);
+    let global_max_retry_timeout: u64 = state.db.get_global_setting("max_retry_timeout", "120").parse().unwrap_or(120);
+    let global_request_timeout: u64 = state.db.get_global_setting("request_timeout", "120").parse().unwrap_or(120);
+    let max_attempts = if global_max_retries == -1 { usize::MAX } else { global_max_retries as usize + 1 };
     let mut last_error = String::new();
 
     for provider in plan.providers.iter() {
@@ -563,12 +588,16 @@ pub async fn handle_opencode_chat(
             req_headers.insert("authorization", auth_val);
         }
 
-        for _attempt in 0..max_attempts {
+        for attempt in 0..max_attempts {
+            if attempt > 0 {
+                let wait_secs = std::cmp::min(2.0_f64.powi(attempt as i32 - 1) as u64, global_max_retry_timeout);
+                tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+            }
             let req = state.http_client.request(method.clone(), &upstream_url)
                 .headers(req_headers.clone())
                 .body(body_bytes.clone());
             let start_time = Instant::now();
-            let res_result = tokio::time::timeout(Duration::from_secs(plan.timeout_seconds as u64), req.send()).await;
+            let res_result = tokio::time::timeout(Duration::from_secs(global_request_timeout), req.send()).await;
             match res_result {
                 Ok(Ok(res)) => {
                     let status = res.status();
@@ -641,8 +670,11 @@ pub async fn handle_codex_proxy(
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),
     };
 
-    // 修复问题1：每个供应商独立重试 retry_count+1 次
-    let max_attempts = plan.retry_count as usize + 1;
+    // 修复问题1：每个供应商独立重试 max_attempts 次
+    let global_max_retries: i32 = state.db.get_global_setting("max_retries", "2").parse().unwrap_or(2);
+    let global_max_retry_timeout: u64 = state.db.get_global_setting("max_retry_timeout", "120").parse().unwrap_or(120);
+    let global_request_timeout: u64 = state.db.get_global_setting("request_timeout", "120").parse().unwrap_or(120);
+    let max_attempts = if global_max_retries == -1 { usize::MAX } else { global_max_retries as usize + 1 };
     let mut last_error = String::new();
 
     for provider in plan.providers.iter() {
@@ -699,14 +731,18 @@ pub async fn handle_codex_proxy(
         }
 
         // --- 针对同一个供应商重试 max_attempts 次 ---
-        for _attempt in 0..max_attempts {
+        for attempt in 0..max_attempts {
+            if attempt > 0 {
+                let wait_secs = std::cmp::min(2.0_f64.powi(attempt as i32 - 1) as u64, global_max_retry_timeout);
+                tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+            }
             let req = state.http_client.request(method.clone(), &upstream_url)
                 .headers(req_headers.clone())
                 .body(body_bytes.clone());
             let start_time = Instant::now();
 
             let res_result = tokio::time::timeout(
-                Duration::from_secs(plan.timeout_seconds as u64),
+                Duration::from_secs(global_request_timeout),
                 req.send()
             ).await;
 
