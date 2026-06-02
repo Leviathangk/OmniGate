@@ -914,44 +914,40 @@ input, textarea {
   gap: 16px;
 }
 
-.strategy-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.strategy-card {
+/* Segmented Control */
+.segmented-control {
+  display: inline-flex;
+  background-color: hsl(var(--bg-app));
   border: 1px solid hsl(var(--border-color));
-  border-radius: var(--radius-md);
-  padding: 20px;
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.segmented-item {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: hsl(var(--text-secondary));
+  border-radius: 6px;
   cursor: pointer;
-  background-color: hsl(var(--bg-card));
-  position: relative;
-}
-
-.strategy-card:hover {
-  border-color: hsl(var(--primary) / 0.3);
-}
-
-.strategy-card.active {
-  border-color: hsl(var(--primary));
-  background-color: hsl(var(--primary) / 0.03);
-}
-
-.strategy-card h4 {
-  font-size: 0.9rem;
-  font-weight: 700;
-  margin-bottom: 6px;
+  transition: all 0.2s;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  border: 1px solid transparent;
 }
 
-.strategy-card p {
-  font-size: 0.76rem;
-  color: hsl(var(--text-secondary));
-  line-height: 1.4;
+.segmented-item:hover {
+  color: hsl(var(--text-primary));
+}
+
+.segmented-item.active {
+  background-color: hsl(var(--bg-card));
+  color: hsl(var(--text-primary));
+  font-weight: 600;
+  border-color: hsl(var(--border-color));
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 /* Row toggle switches */
