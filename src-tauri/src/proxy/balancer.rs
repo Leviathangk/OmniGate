@@ -6,8 +6,6 @@ use std::collections::HashMap;
 
 pub struct RoutingPlan {
     pub providers: Vec<ProxyProvider>,
-    pub timeout_seconds: u32,
-    pub retry_count: u32,
 }
 
 pub struct Balancer {
@@ -167,8 +165,6 @@ impl Balancer {
 
         Some(RoutingPlan {
             providers: attached_providers,
-            timeout_seconds: config.timeout_seconds,
-            retry_count: config.retry_count,
         })
     }
 }
