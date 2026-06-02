@@ -1099,3 +1099,35 @@ pub fn remove_opencode_direct_provider(
     
     Ok(())
 }
+
+#[tauri::command]
+pub fn update_tray_menu_state(
+    client_id: String,
+    mode: String,
+    state: tauri::State<'_, crate::TrayMenuState>,
+) -> Result<(), String> {
+    let check_proxy = mode == "proxy";
+    let check_direct = mode == "direct";
+    let check_off = mode == "off" || (mode != "proxy" && mode != "direct");
+
+    match client_id.as_str() {
+        "claude" => {
+            let _ = state.claude_proxy.set_checked(check_proxy);
+            let _ = state.claude_direct.set_checked(check_direct);
+            let _ = state.claude_off.set_checked(check_off);
+        }
+        "codex" => {
+            let _ = state.codex_proxy.set_checked(check_proxy);
+            let _ = state.codex_direct.set_checked(check_direct);
+            let _ = state.codex_off.set_checked(check_off);
+        }
+        "opencode" => {
+            let _ = state.opencode_proxy.set_checked(check_proxy);
+            let _ = state.opencode_direct.set_checked(check_direct);
+            let _ = state.opencode_off.set_checked(check_off);
+        }
+        _ => {}
+    }
+    
+    Ok(())
+}

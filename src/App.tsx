@@ -645,6 +645,7 @@ function App() {
   // ============================================================================
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [darkMode, setDarkMode] = useState<boolean>(true);
+  const [trayToggleTarget, setTrayToggleTarget] = useState<{ client_id: string, mode: string } | null>(null);
 
   // 删除供应商确认 Modal 状态
   const [providerToDelete, setProviderToDelete] = useState<string | null>(null);
@@ -1410,6 +1411,104 @@ function App() {
     }
   };
 
+
+  const handleSetClientMode = async (clientId: string, mode: string) => {
+    const config = clientConfigs.find(c => c.client_id === clientId);
+    if (!config) return;
+
+    if (mode === "direct" && !config.direct_provider_id) {
+      alert("请先在主界面配置一个直连供应商后再开启直连模式！");
+      const actualMode = config.is_enabled ? (config.operation_mode === "direct" ? "direct" : "proxy") : "off";
+      invoke("update_tray_menu_state", { clientId, mode: actualMode }).catch(console.error);
+      return;
+    }
+
+    const newEnabledState = mode !== "off";
+    const newOperationMode = mode === "off" ? config.operation_mode : mode;
+
+    if (clientId === "opencode") {
+      setClientConfigs(prev => prev.map(c => 
+        (c.client_id === "opencode" || c.client_id.startsWith("opencode-"))
+          ? { ...c, is_enabled: newEnabledState, operation_mode: newOperationMode } 
+          : c
+      ));
+    } else {
+      setClientConfigs(prev => prev.map(c => c.client_id === clientId ? { ...c, is_enabled: newEnabledState, operation_mode: newOperationMode } : c));
+    }
+
+    if (clientId === "codex") {
+      if (!newEnabledState) {
+        try { await invoke("restore_codex_config"); } catch (e) { console.error(e); }
+      } else {
+        if (newOperationMode === "proxy") {
+          try {
+            await invoke("hijack_codex_config", {
+              providerName: hijackProviderName || "custom",
+              baseUrl: hijackBaseUrl || "http://127.0.0.1:3456",
+              proxyApiKey: hijackApiKey || "sk-omnigate-fallback"
+            });
+          } catch (e) {}
+        } else {
+          try { await invoke("apply_direct_config", { clientId, providerId: config.direct_provider_id }); } catch (e) {}
+        }
+      }
+    }
+
+    if (clientId === "opencode") {
+      if (!newEnabledState) {
+        try { await invoke("restore_opencode_config"); } catch (e) { console.error(e); }
+      } else {
+        if (newOperationMode === "proxy") {
+          try { await invoke("hijack_opencode_config", { proxyApiKey: hijackApiKey || "sk-omnigate-fallback" }); } catch (e) {}
+        } else {
+          try { await invoke("apply_direct_config", { clientId, providerId: config.direct_provider_id }); } catch (e) {}
+        }
+      }
+    }
+
+    if (clientId === "claude") {
+      if (!newEnabledState) {
+        try { await invoke("restore_claude_config"); } catch (e) { console.error(e); }
+      } else {
+        if (newOperationMode === "proxy") {
+          try { await invoke("hijack_claude_config", { proxyApiKey: hijackApiKey || "sk-omnigate-fallback" }); } catch (e) {}
+        } else {
+          try { await invoke("apply_direct_config", { clientId, providerId: config.direct_provider_id }); } catch (e) {}
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    const setupTrayListener = async () => {
+      const unlisten = await listen<{client_id: string, mode: string}>('tray-set-mode', (event) => {
+        setTrayToggleTarget(event.payload);
+      });
+      return unlisten;
+    };
+    let unlistenPromise = setupTrayListener();
+    return () => {
+      unlistenPromise.then(u => u());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (trayToggleTarget) {
+      const { client_id, mode } = trayToggleTarget;
+      setTrayToggleTarget(null);
+      handleSetClientMode(client_id, mode);
+    }
+  }, [trayToggleTarget]);
+
+  // 同步状态到托盘菜单打勾状态
+  useEffect(() => {
+    clientConfigs.forEach(c => {
+      if (["claude", "codex", "opencode"].includes(c.client_id)) {
+        const mode = c.is_enabled ? (c.operation_mode === "direct" ? "direct" : "proxy") : "off";
+        invoke("update_tray_menu_state", { clientId: c.client_id, mode }).catch(console.error);
+      }
+    });
+  }, [clientConfigs]);
 
   const handleToggleClient = async (clientId: string) => {
     const config = clientConfigs.find(c => c.client_id === clientId);
