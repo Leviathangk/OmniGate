@@ -14,6 +14,7 @@ interface ClientConfigTabProps {
   providers: Provider[];
   handleMoveProvider: (clientId: string, pIndex: number, dir: number) => void;
   handleWeightChange: (clientId: string, providerId: string, weight: number) => void;
+  handleRemoveProviderFromClient: (clientId: string, providerId: string) => void;
   showToast: (msg: string, type?: "success" | "error" | "warning" | "info") => void;
   handleToggleClientProvider: (clientId: string, providerId: string) => void;
   addingProviderForClient: string | null;
@@ -70,6 +71,7 @@ export function ClientConfigTab({
   providers,
   handleMoveProvider,
   handleWeightChange,
+  handleRemoveProviderFromClient,
   showToast,
   handleToggleClientProvider,
   addingProviderForClient,
@@ -232,14 +234,15 @@ export function ClientConfigTab({
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th style={{ width: "40%" }}>供应商</th>
+                      <th style={{ width: "35%" }}>供应商</th>
                       <th style={{ width: "15%", textAlign: "center" }}>运行状态</th>
-                      <th style={{ width: "30%", textAlign: "center" }}>
+                      <th style={{ width: "25%", textAlign: "center" }}>
                         {config.strategy === "random" && "轮换权重"}
                         {config.strategy === "manual" && "手动选择"}
                         {config.strategy === "priority" && "优先级调整"}
                       </th>
                       <th style={{ width: "15%", textAlign: "center" }}>启用状态</th>
+                      <th style={{ width: "10%", textAlign: "center" }}>操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -327,6 +330,18 @@ export function ClientConfigTab({
                                   <div className="switch-thumb"></div>
                                 </div>
                               </div>
+                            </div>
+                          </td>
+                          <td style={{ width: "10%", textAlign: "center" }}>
+                            <div style={{ display: "flex", justifyContent: "center" }}>
+                              <button 
+                                className="icon-btn" 
+                                style={{ color: "hsl(var(--danger))", opacity: 0.8 }} 
+                                onClick={() => handleRemoveProviderFromClient(config.client_id, p.id)}
+                                title="从当前配置中移除该供应商"
+                              >
+                                <Trash2 size={14} />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -571,14 +586,15 @@ export function ClientConfigTab({
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th style={{ width: "40%" }}>供应商</th>
+                        <th style={{ width: "35%" }}>供应商</th>
                         <th style={{ width: "15%", textAlign: "center" }}>运行状态</th>
-                        <th style={{ width: "30%", textAlign: "center" }}>
+                        <th style={{ width: "25%", textAlign: "center" }}>
                           {cfg.strategy === "random" && "轮换权重"}
                           {cfg.strategy === "manual" && "手动选择"}
                           {cfg.strategy === "priority" && "优先级调整"}
                         </th>
                         <th style={{ width: "15%", textAlign: "center" }}>启用状态</th>
+                        <th style={{ width: "10%", textAlign: "center" }}>操作</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -586,10 +602,14 @@ export function ClientConfigTab({
                         const globalProvider = providers.find(gp => gp.id === p.id);
                         const isGloballyDisabled = globalProvider ? !globalProvider.is_active : false;
                         const isPinned = cfg.strategy === "manual" && (cfg.manual_provider_id ? p.id === cfg.manual_provider_id : pIndex === 0);
+                        const isActive = activeProviders[cfg.client_id] === p.id;
                         return (
                           <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : (cfg.strategy === "manual" && !isPinned ? { opacity: 0.4 } : {})}>
                             <td style={{ fontWeight: "600" }}>
-                              <div style={{ display: "flex", alignItems: "center" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                {isActive && (
+                                  <div title="当前生效路由" style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "hsl(var(--success))", boxShadow: "0 0 6px hsl(var(--success) / 0.6)", flexShrink: 0 }}></div>
+                                )}
                                 {p.name}
                                 {isPinned && (
                                   <span style={{ marginLeft: "8px", fontSize: "0.65rem", fontWeight: "normal", padding: "2px 6px", borderRadius: "4px", backgroundColor: "hsl(var(--primary))", color: "#fff" }}>当前手动选择</span>
@@ -643,6 +663,18 @@ export function ClientConfigTab({
                                     <div className="switch-thumb"></div>
                                   </div>
                                 </div>
+                              </div>
+                            </td>
+                            <td style={{ width: "10%", textAlign: "center" }}>
+                              <div style={{ display: "flex", justifyContent: "center" }}>
+                                <button 
+                                  className="icon-btn" 
+                                  style={{ color: "hsl(var(--danger))", opacity: 0.8 }} 
+                                  onClick={() => handleRemoveProviderFromClient(cfg.client_id, p.id)}
+                                  title="从当前配置中移除该供应商"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
                               </div>
                             </td>
                           </tr>

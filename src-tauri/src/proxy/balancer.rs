@@ -132,24 +132,22 @@ impl Balancer {
                         if penalty.last_penalty_time < global_reset_ts {
                             should_reset = true;
                         }
+                    } else if p.billing_type == "subscription" {
+                        let reset_time_str = p.reset_time.as_deref().unwrap_or("00:00");
+                        let reset_ts = get_recent_reset_timestamp(reset_time_str);
+                        if penalty.last_penalty_time < reset_ts {
+                            should_reset = true;
+                        }
+                        // 对于订阅制，除了到点重置，如果宕机超过 1 小时也自动释放惩罚，应对临时服务挂掉
+                        if penalty.last_penalty_time < now_ts - 3600 {
+                            should_reset = true;
+                        }
                     } else {
-                        if p.billing_type == "subscription" {
-                            let reset_time_str = p.reset_time.as_deref().unwrap_or("00:00");
-                            let reset_ts = get_recent_reset_timestamp(reset_time_str);
-                            if penalty.last_penalty_time < reset_ts {
-                                should_reset = true;
-                            }
-                            // 对于订阅制，除了到点重置，如果宕机超过 1 小时也自动释放惩罚，应对临时服务挂掉
-                            if penalty.last_penalty_time < now_ts - 3600 {
-                                should_reset = true;
-                            }
-                        } else {
-                            // pay_as_you_go: custom hours decay (default 1 hour)
-                            let hours_str = p.reset_time.as_deref().unwrap_or("1");
-                            let hours = hours_str.parse::<i64>().unwrap_or(1);
-                            if penalty.last_penalty_time < now_ts - (hours * 3600) {
-                                should_reset = true;
-                            }
+                        // pay_as_you_go: custom hours decay (default 1 hour)
+                        let hours_str = p.reset_time.as_deref().unwrap_or("1");
+                        let hours = hours_str.parse::<i64>().unwrap_or(1);
+                        if penalty.last_penalty_time < now_ts - (hours * 3600) {
+                            should_reset = true;
                         }
                     }
 

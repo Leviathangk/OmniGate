@@ -909,24 +909,18 @@ function App() {
   const [wizardSearchQuery, setWizardSearchQuery] = useState<string>("");
   const [wizardFeatureTab, setWizardFeatureTab] = useState<string>("all");
 
+  // 删除 fetchActiveProviders，因为现在完全由真实路由事件驱动
+
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    listen("active_provider_changed", async () => {
-      if (!clientConfigs) return;
-      const newActive: Record<string, string> = {};
-      for (const config of clientConfigs) {
-        if (config.is_enabled) {
-          try {
-            const activeId = await invoke<string | null>("get_current_active_provider", { clientId: config.client_id });
-            if (activeId) {
-              newActive[config.client_id] = activeId;
-            }
-          } catch (e) {
-            console.error("Failed to get active provider for", config.client_id, e);
-          }
-        }
+    listen("routing_active", async (event: any) => {
+      const payload = event.payload;
+      if (payload && payload.client_id && payload.provider_id) {
+        setActiveProviders(prev => ({
+          ...prev,
+          [payload.client_id]: payload.provider_id
+        }));
       }
-      setActiveProviders(newActive);
     }).then(u => { unlisten = u; });
 
     return () => {
@@ -1446,6 +1440,18 @@ function App() {
     reader.readAsText(file);
     // 重置 input，确保同名文件可以再次选择
     e.target.value = "";
+  };
+
+  const handleRemoveProviderFromClient = (clientId: string, providerId: string) => {
+    setClientConfigs(prev => prev.map(c => {
+      if (c.client_id === clientId) {
+        return {
+          ...c,
+          providers: c.providers.filter(p => p.id !== providerId)
+        };
+      }
+      return c;
+    }));
   };
 
   // 导入单个供应商
@@ -2216,6 +2222,7 @@ function App() {
               providers={providers}
               handleMoveProvider={handleMoveProvider}
               handleWeightChange={handleWeightChange}
+              handleRemoveProviderFromClient={handleRemoveProviderFromClient}
               showToast={showToast}
               handleToggleClientProvider={handleToggleClientProvider}
               addingProviderForClient={addingProviderForClient}

@@ -307,10 +307,10 @@ fn build_models_endpoint(api_url: &str) -> String {
     };
 
     if !has_version {
-        base_url = format!("{}/v1", base_url);
+        base_url = format!("{base_url}/v1");
     }
     
-    format!("{}/models", base_url)
+    format!("{base_url}/models")
 }
 
 // ============================================================================
@@ -332,7 +332,7 @@ pub async fn fetch_models_by_protocol(
         "claude" => fetch_models_claude(api_url, api_key, provider_id).await,
         "codex_responses" => fetch_models_openai(api_url, api_key, provider_id, true).await,
         "codex_chat"      => fetch_models_openai(api_url, api_key, provider_id, false).await,
-        other => Err(format!("不支持的协议: {}", other)),
+        other => Err(format!("不支持的协议: {other}")),
     }
 }
 
@@ -351,7 +351,7 @@ async fn fetch_models_claude(
         .timeout(std::time::Duration::from_secs(15))
         .user_agent("OmniGate/0.1")
         .build()
-        .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
+        .map_err(|e| format!("构建 HTTP 客户端失败: {e}"))?;
 
     let response = client
         .get(&endpoint)
@@ -360,7 +360,7 @@ async fn fetch_models_claude(
         .header("Content-Type", "application/json")
         .send()
         .await
-        .map_err(|e| format!("请求 {} 失败: {}", endpoint, e))?;
+        .map_err(|e| format!("请求 {endpoint} 失败: {e}"))?;
 
     let status = response.status();
     if !status.is_success() {
@@ -371,7 +371,7 @@ async fn fetch_models_claude(
     let list: ClaudeModelsListResponse = response
         .json()
         .await
-        .map_err(|e| format!("解析 Claude 响应 JSON 失败: {}", e))?;
+        .map_err(|e| format!("解析 Claude 响应 JSON 失败: {e}"))?;
 
     let models = list
         .data
@@ -410,22 +410,22 @@ pub async fn fetch_models_openai(
     let endpoint = if use_v1 {
         build_models_endpoint(trimmed)          // → /v1/models
     } else {
-        format!("{}/models", trimmed)           // → /models（codex_chat）
+        format!("{trimmed}/models")           // → /models（codex_chat）
     };
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .user_agent("OmniGate/0.1")
         .build()
-        .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
+        .map_err(|e| format!("构建 HTTP 客户端失败: {e}"))?;
 
     let response = client
         .get(&endpoint)
-        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Authorization", format!("Bearer {api_key}"))
         .header("Content-Type", "application/json")
         .send()
         .await
-        .map_err(|e| format!("请求 {} 失败: {}", endpoint, e))?;
+        .map_err(|e| format!("请求 {endpoint} 失败: {e}"))?;
 
     let status = response.status();
     if !status.is_success() {
@@ -436,7 +436,7 @@ pub async fn fetch_models_openai(
     let list: OpenAIModelsListResponse = response
         .json()
         .await
-        .map_err(|e| format!("解析响应 JSON 失败: {}", e))?;
+        .map_err(|e| format!("解析响应 JSON 失败: {e}"))?;
 
     let models = list
         .data

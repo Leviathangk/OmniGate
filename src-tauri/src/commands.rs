@@ -883,7 +883,7 @@ fn get_cli_prompt_path(app_handle: &tauri::AppHandle, client_id: &str) -> Result
         "claude" => home_dir.join(".claude").join("CLAUDE.md"),
         "opencode" => home_dir.join(".config").join("opencode").join("AGENTS.md"),
         "codex" => home_dir.join(".codex").join("AGENTS.md"),
-        _ => return Err(format!("Unknown client_id for global prompt: {}", client_id)),
+        _ => return Err(format!("Unknown client_id for global prompt: {client_id}")),
     };
     Ok(path)
 }
@@ -902,7 +902,7 @@ pub fn check_cli_installed(client_id: String, app_handle: tauri::AppHandle) -> R
 pub fn read_external_prompt(client_id: String, app_handle: tauri::AppHandle) -> Result<String, String> {
     let path = get_cli_prompt_path(&app_handle, &client_id)?;
     if path.exists() {
-        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
+        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))
     } else {
         Ok("".to_string())
     }
@@ -916,7 +916,7 @@ pub fn write_external_prompt(client_id: String, content: String, app_handle: tau
             return Err(format!("目录 {} 不存在，不主动创建外部系统目录。", parent.display()));
         }
     }
-    std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
+    std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {e}"))
 }
 
 // ============================================================================
@@ -1062,7 +1062,7 @@ pub fn apply_direct_config(
                 } else { false }
             };
             if !has_version {
-                clean_url = format!("{}/v1", clean_url);
+                clean_url = format!("{clean_url}/v1");
             }
             
             if let Some(providers_obj) = config["provider"].as_object_mut() {
@@ -1084,7 +1084,7 @@ pub fn apply_direct_config(
             let out = serde_json::to_string_pretty(&config).unwrap();
             std::fs::write(&config_path, out).map_err(|e| e.to_string())?;
         },
-        _ => return Err(format!("Unknown clientId for direct config: {}", client_id)),
+        _ => return Err(format!("Unknown clientId for direct config: {client_id}")),
     }
     
     Ok(())
@@ -1128,7 +1128,7 @@ pub fn remove_opencode_direct_provider(
     let mut config: serde_json::Value = serde_json::from_str(&content).unwrap_or(serde_json::json!({}));
     
     if let Some(provider_obj) = config.get_mut("provider").and_then(|v| v.as_object_mut()) {
-        provider_obj.remove(&format!("direct-{}", provider_id));
+        provider_obj.remove(&format!("direct-{provider_id}"));
     }
     
     let out = serde_json::to_string_pretty(&config).unwrap();

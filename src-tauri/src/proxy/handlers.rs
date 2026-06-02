@@ -165,9 +165,9 @@ pub async fn handle_claude_messages(
             }
         };
         if !has_version {
-            base_url = format!("{}/v1", base_url);
+            base_url = format!("{base_url}/v1");
         }
-        let upstream_url = format!("{}/messages", base_url);
+        let upstream_url = format!("{base_url}/messages");
 
         let mut req_headers = headers.clone();
         req_headers.remove("host");
@@ -183,12 +183,15 @@ pub async fn handle_claude_messages(
                 if !req_headers.contains_key("anthropic-version") {
                     req_headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
                 }
-            } else {
-                if let Ok(auth_val) = HeaderValue::from_str(&format!("Bearer {}", safe_key)) {
-                    req_headers.insert("authorization", auth_val);
-                }
+            } else if let Ok(auth_val) = HeaderValue::from_str(&format!("Bearer {safe_key}")) {
+                req_headers.insert("authorization", auth_val);
             }
         }
+
+        let _ = state.app_handle.emit("routing_active", serde_json::json!({
+            "client_id": "claude",
+            "provider_id": provider.id,
+        }));
 
         // --- 针对同一个供应商重试 max_attempts 次 ---
         for attempt in 0..max_attempts {
@@ -212,7 +215,7 @@ pub async fn handle_claude_messages(
                     if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
                         // 可重试错误：继续重试同一供应商
                         let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
-                        last_error = format!("HTTP {} - {}", status, body_text);
+                        last_error = format!("HTTP {status} - {body_text}");
                         let latency = start_time.elapsed().as_millis() as u32;
                         record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
                         continue; // 重试同一供应商
@@ -229,18 +232,18 @@ pub async fn handle_claude_messages(
                     let latency = start_time.elapsed().as_millis() as u32;
                     state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, status.as_u16(), latency, None);
-                    let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                    let stream = res.bytes_stream().map_err(std::io::Error::other);
                     let body = Body::from_stream(stream);
                     return Ok(response_builder.body(body).unwrap());
                 }
                 Ok(Err(e)) => {
-                    last_error = format!("Reqwest error: {}", e);
+                    last_error = format!("Reqwest error: {e}");
                     let latency = start_time.elapsed().as_millis() as u32;
                     record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, 502, latency, Some(last_error.clone()));
                     continue; // 重试同一供应商
                 }
                 Err(e) => {
-                    last_error = format!("Timeout: {}", e);
+                    last_error = format!("Timeout: {e}");
                     let latency = start_time.elapsed().as_millis() as u32;
                     record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, 504, latency, Some(last_error.clone()));
                     continue; // 重试同一供应商
@@ -255,7 +258,7 @@ pub async fn handle_claude_messages(
         (
             StatusCode::BAD_REQUEST,
             "invalid_request_error",
-            format!("[OmniGate] 请求被拒绝：您请求的模型 `{}` 未在当前配置的任何供应商中启用，也没有匹配的映射别名。请前往 OmniGate 控制台检查“模型信息”或配置“模型映射”。", model_name)
+            format!("[OmniGate] 请求被拒绝：您请求的模型 `{model_name}` 未在当前配置的任何供应商中启用，也没有匹配的映射别名。请前往 OmniGate 控制台检查“模型信息”或配置“模型映射”。")
         )
     } else if last_error.is_empty() {
         (
@@ -267,7 +270,7 @@ pub async fn handle_claude_messages(
         (
             StatusCode::BAD_GATEWAY,
             "upstream_error",
-            format!("[OmniGate] 上游请求失败: {}", last_error)
+            format!("[OmniGate] 上游请求失败: {last_error}")
         )
     };
     Ok(build_json_error(status_code, error_type, &msg).into_response())
@@ -315,8 +318,8 @@ pub async fn handle_opencode_claude(
                 last.starts_with('v') && last.len() > 1 && last[1..].chars().all(|c| c.is_ascii_digit())
             } else { false }
         };
-        if !has_version { base_url = format!("{}/v1", base_url); }
-        let upstream_url = format!("{}/messages", base_url);
+        if !has_version { base_url = format!("{base_url}/v1"); }
+        let upstream_url = format!("{base_url}/messages");
 
         let mut req_headers = headers.clone();
         req_headers.remove("host");
@@ -332,12 +335,15 @@ pub async fn handle_opencode_claude(
                 if !req_headers.contains_key("anthropic-version") {
                     req_headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
                 }
-            } else {
-                if let Ok(auth_val) = HeaderValue::from_str(&format!("Bearer {}", safe_key)) {
-                    req_headers.insert("authorization", auth_val);
-                }
+            } else if let Ok(auth_val) = HeaderValue::from_str(&format!("Bearer {safe_key}")) {
+                req_headers.insert("authorization", auth_val);
             }
         }
+
+        let _ = state.app_handle.emit("routing_active", serde_json::json!({
+            "client_id": "opencode-claude",
+            "provider_id": provider.id,
+        }));
 
         // --- 针对同一个供应商重试 max_attempts 次 ---
         for attempt in 0..max_attempts {
@@ -355,7 +361,7 @@ pub async fn handle_opencode_claude(
                     let status = res.status();
                     if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
                         let body_text = res.text().await.unwrap_or_default();
-                        last_error = format!("HTTP {} - {}", status, body_text);
+                        last_error = format!("HTTP {status} - {body_text}");
                         let latency = start_time.elapsed().as_millis() as u32;
                         record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
                         continue;
@@ -370,17 +376,17 @@ pub async fn handle_opencode_claude(
                     let latency = start_time.elapsed().as_millis() as u32;
                     state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
-                    let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                    let stream = res.bytes_stream().map_err(std::io::Error::other);
                     return Ok(rb.body(Body::from_stream(stream)).unwrap());
                 }
                 Ok(Err(e)) => {
-                    last_error = format!("Reqwest error: {}", e);
+                    last_error = format!("Reqwest error: {e}");
                     let latency = start_time.elapsed().as_millis() as u32;
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
                     continue;
                 }
                 Err(e) => {
-                    last_error = format!("Timeout: {}", e);
+                    last_error = format!("Timeout: {e}");
                     let latency = start_time.elapsed().as_millis() as u32;
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 504, latency, Some(last_error.clone()));
                     continue;
@@ -391,7 +397,7 @@ pub async fn handle_opencode_claude(
     }
 
     let msg = if last_error.is_empty() { "[OmniGate] 所有上游供应商均请求失败。".to_string() }
-              else { format!("[OmniGate] 上游请求失败: {}", last_error) };
+              else { format!("[OmniGate] 上游请求失败: {last_error}") };
     Ok(build_json_error(StatusCode::BAD_GATEWAY, "upstream_error", &msg).into_response())
 }
 
@@ -406,7 +412,7 @@ pub async fn handle_opencode_resp(
 ) -> Result<impl IntoResponse, StatusCode> {
     let path = request.uri().path()
         .strip_prefix("/opencode/responses").unwrap_or(request.uri().path()).to_string();
-    let query = request.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
+    let query = request.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
     let method = request.method().clone();
     let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
         Ok(b) => b,
@@ -438,16 +444,14 @@ pub async fn handle_opencode_resp(
                 last.starts_with('v') && last.len() > 1 && last[1..].chars().all(|c| c.is_ascii_digit())
             } else { false }
         };
-        if !has_version { base_url = format!("{}/v1", base_url); }
+        if !has_version { base_url = format!("{base_url}/v1"); }
 
         // Responses 协议路径映射（同 codex_proxy 逻辑）
         let mapped_path = if path == "/responses" || path == "/v1/responses" {
             if provider.protocol == "claude" { "/messages".to_string() } else { "/responses".to_string() }
-        } else {
-            if path.starts_with("/v1/") { path.strip_prefix("/v1").unwrap_or(&path).to_string() } else { path.clone() }
-        };
+        } else if path.starts_with("/v1/") { path.strip_prefix("/v1").unwrap_or(&path).to_string() } else { path.clone() };
 
-        let upstream_url = format!("{}{}{}", base_url, mapped_path, query);
+        let upstream_url = format!("{base_url}{mapped_path}{query}");
 
         let mut req_headers = headers.clone();
         req_headers.remove("host");
@@ -463,12 +467,14 @@ pub async fn handle_opencode_resp(
                 if !req_headers.contains_key("anthropic-version") {
                     req_headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
                 }
-            } else {
-                if let Ok(auth_val) = HeaderValue::from_str(&format!("Bearer {}", safe_key)) {
-                    req_headers.insert("authorization", auth_val);
-                }
+            } else if let Ok(auth_val) = HeaderValue::from_str(&format!("Bearer {safe_key}")) {
+                req_headers.insert("authorization", auth_val);
             }
         }
+        let _ = state.app_handle.emit("routing_active", serde_json::json!({
+            "client_id": "opencode-resp",
+            "provider_id": provider.id,
+        }));
 
         for attempt in 0..max_attempts {
             if attempt > 0 {
@@ -485,7 +491,7 @@ pub async fn handle_opencode_resp(
                     let status = res.status();
                     if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
                         let body_text = res.text().await.unwrap_or_default();
-                        last_error = format!("HTTP {} - {}", status, body_text);
+                        last_error = format!("HTTP {status} - {body_text}");
                         let latency = start_time.elapsed().as_millis() as u32;
                         record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
                         continue;
@@ -500,17 +506,17 @@ pub async fn handle_opencode_resp(
                     let latency = start_time.elapsed().as_millis() as u32;
                     state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
-                    let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                    let stream = res.bytes_stream().map_err(std::io::Error::other);
                     return Ok(rb.body(Body::from_stream(stream)).unwrap());
                 }
                 Ok(Err(e)) => {
-                    last_error = format!("Reqwest error: {}", e);
+                    last_error = format!("Reqwest error: {e}");
                     let latency = start_time.elapsed().as_millis() as u32;
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
                     continue;
                 }
                 Err(e) => {
-                    last_error = format!("Timeout: {}", e);
+                    last_error = format!("Timeout: {e}");
                     let latency = start_time.elapsed().as_millis() as u32;
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 504, latency, Some(last_error.clone()));
                     continue;
@@ -521,7 +527,7 @@ pub async fn handle_opencode_resp(
     }
 
     let msg = if last_error.is_empty() { "[OmniGate] 所有上游供应商均请求失败。".to_string() }
-              else { format!("[OmniGate] 上游请求失败: {}", last_error) };
+              else { format!("[OmniGate] 上游请求失败: {last_error}") };
     Ok(build_json_error(StatusCode::BAD_GATEWAY, "upstream_error", &msg).into_response())
 }
 
@@ -536,7 +542,7 @@ pub async fn handle_opencode_chat(
 ) -> Result<impl IntoResponse, StatusCode> {
     let path = request.uri().path()
         .strip_prefix("/opencode/chat").unwrap_or(request.uri().path()).to_string();
-    let query = request.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
+    let query = request.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
     let method = request.method().clone();
     let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
         Ok(b) => b,
@@ -568,13 +574,13 @@ pub async fn handle_opencode_chat(
                 last.starts_with('v') && last.len() > 1 && last[1..].chars().all(|c| c.is_ascii_digit())
             } else { false }
         };
-        if !has_version { base_url = format!("{}/v1", base_url); }
+        if !has_version { base_url = format!("{base_url}/v1"); }
 
         // Chat 协议路径透传
         let mapped_path = if path.starts_with("/v1/") {
             path.strip_prefix("/v1").unwrap_or(&path).to_string()
         } else { path.clone() };
-        let upstream_url = format!("{}{}{}", base_url, mapped_path, query);
+        let upstream_url = format!("{base_url}{mapped_path}{query}");
 
         let mut req_headers = headers.clone();
         req_headers.remove("host");
@@ -584,9 +590,13 @@ pub async fn handle_opencode_chat(
         req_headers.remove("accept-encoding");
 
         let safe_key = provider.api_key.trim();
-        if let Ok(auth_val) = HeaderValue::from_str(&format!("Bearer {}", safe_key)) {
+        if let Ok(auth_val) = HeaderValue::from_str(&format!("Bearer {safe_key}")) {
             req_headers.insert("authorization", auth_val);
         }
+        let _ = state.app_handle.emit("routing_active", serde_json::json!({
+            "client_id": "opencode-chat",
+            "provider_id": provider.id,
+        }));
 
         for attempt in 0..max_attempts {
             if attempt > 0 {
@@ -603,7 +613,7 @@ pub async fn handle_opencode_chat(
                     let status = res.status();
                     if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
                         let body_text = res.text().await.unwrap_or_default();
-                        last_error = format!("HTTP {} - {}", status, body_text);
+                        last_error = format!("HTTP {status} - {body_text}");
                         let latency = start_time.elapsed().as_millis() as u32;
                         record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
                         continue;
@@ -618,17 +628,17 @@ pub async fn handle_opencode_chat(
                     let latency = start_time.elapsed().as_millis() as u32;
                     state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
-                    let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                    let stream = res.bytes_stream().map_err(std::io::Error::other);
                     return Ok(rb.body(Body::from_stream(stream)).unwrap());
                 }
                 Ok(Err(e)) => {
-                    last_error = format!("Reqwest error: {}", e);
+                    last_error = format!("Reqwest error: {e}");
                     let latency = start_time.elapsed().as_millis() as u32;
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
                     continue;
                 }
                 Err(e) => {
-                    last_error = format!("Timeout: {}", e);
+                    last_error = format!("Timeout: {e}");
                     let latency = start_time.elapsed().as_millis() as u32;
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 504, latency, Some(last_error.clone()));
                     continue;
@@ -639,7 +649,7 @@ pub async fn handle_opencode_chat(
     }
 
     let msg = if last_error.is_empty() { "[OmniGate] 所有上游供应商均请求失败。".to_string() }
-              else { format!("[OmniGate] 上游请求失败: {}", last_error) };
+              else { format!("[OmniGate] 上游请求失败: {last_error}") };
     Ok(build_json_error(StatusCode::BAD_GATEWAY, "upstream_error", &msg).into_response())
 }
 
@@ -651,7 +661,7 @@ pub async fn handle_codex_proxy(
     request: Request<Body>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let path = request.uri().path().strip_prefix("/codex").unwrap_or(request.uri().path()).to_string();
-    let query = request.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
+    let query = request.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
     let method = request.method().clone();
     let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
         Ok(b) => b,
@@ -689,7 +699,7 @@ pub async fn handle_codex_proxy(
             }
         };
         if !has_version {
-            base_url = format!("{}/v1", base_url);
+            base_url = format!("{base_url}/v1");
         }
 
         let mapped_path = if path == "/responses" || path == "/v1/responses" {
@@ -707,7 +717,7 @@ pub async fn handle_codex_proxy(
             }
         };
 
-        let upstream_url = format!("{}{}{}", base_url, mapped_path, query);
+        let upstream_url = format!("{base_url}{mapped_path}{query}");
 
         let mut req_headers = headers.clone();
         req_headers.remove("host");
@@ -723,12 +733,15 @@ pub async fn handle_codex_proxy(
                 if !req_headers.contains_key("anthropic-version") {
                     req_headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
                 }
-            } else {
-                if let Ok(auth_val) = HeaderValue::from_str(&format!("Bearer {}", safe_key)) {
-                    req_headers.insert("authorization", auth_val);
-                }
+            } else if let Ok(auth_val) = HeaderValue::from_str(&format!("Bearer {safe_key}")) {
+                req_headers.insert("authorization", auth_val);
             }
         }
+
+        let _ = state.app_handle.emit("routing_active", serde_json::json!({
+            "client_id": "codex",
+            "provider_id": provider.id,
+        }));
 
         // --- 针对同一个供应商重试 max_attempts 次 ---
         for attempt in 0..max_attempts {
@@ -752,7 +765,7 @@ pub async fn handle_codex_proxy(
                     if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
                         // 可重试错误：继续重试同一供应商
                         let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
-                        last_error = format!("HTTP {} - {}", status, body_text);
+                        last_error = format!("HTTP {status} - {body_text}");
                         let latency = start_time.elapsed().as_millis() as u32;
                         record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
                         continue; // 重试同一供应商
@@ -769,19 +782,19 @@ pub async fn handle_codex_proxy(
                     let latency = start_time.elapsed().as_millis() as u32;
                     state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
-                    let stream = res.bytes_stream().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                    let stream = res.bytes_stream().map_err(std::io::Error::other);
                     let body = Body::from_stream(stream);
                     return Ok(response_builder.body(body).unwrap());
                 }
                 Ok(Err(e)) => {
-                    last_error = format!("Reqwest error: {}", e);
+                    last_error = format!("Reqwest error: {e}");
                     eprintln!("[OmniGate] Provider {} reqwest error: {}", provider.name, e);
                     let latency = start_time.elapsed().as_millis() as u32;
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
                     continue; // 重试同一供应商
                 }
                 Err(e) => {
-                    last_error = format!("Timeout: {}", e);
+                    last_error = format!("Timeout: {e}");
                     eprintln!("[OmniGate] Provider {} timeout: {}", provider.name, e);
                     let latency = start_time.elapsed().as_millis() as u32;
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 504, latency, Some(last_error.clone()));
@@ -796,7 +809,7 @@ pub async fn handle_codex_proxy(
     let msg = if last_error.is_empty() {
         "[OmniGate] 所有上游供应商均请求失败。".to_string()
     } else {
-        format!("[OmniGate] 上游请求失败: {}", last_error)
+        format!("[OmniGate] 上游请求失败: {last_error}")
     };
     Ok(build_json_error(StatusCode::BAD_GATEWAY, "upstream_error", &msg).into_response())
 }

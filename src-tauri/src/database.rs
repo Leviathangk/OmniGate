@@ -196,7 +196,7 @@ impl DbManager {
         } else {
             let diff = today_count as f64 - yest_count as f64;
             let percent = (diff / yest_count as f64) * 100.0;
-            if percent >= 0.0 { format!("+{:.1}%", percent) } else { format!("{:.1}%", percent) }
+            if percent >= 0.0 { format!("+{percent:.1}%") } else { format!("{percent:.1}%") }
         };
 
         let latency_str = if today_count == 0 { "0 ms".to_string() } else { format!("{} ms", today_avg_latency as i64) };
@@ -239,7 +239,7 @@ impl DbManager {
         let mut full_res = Vec::with_capacity(24);
         for i in 0..24 {
             full_res.push(TrafficPoint {
-                time: format!("{:02}:00", i),
+                time: format!("{i:02}:00"),
                 count: 0,
                 avg_latency: 0.0,
                 error_count: 0,
@@ -350,21 +350,21 @@ impl DbManager {
     pub fn init(app_config_dir: PathBuf) -> Result<Self, String> {
         if !app_config_dir.exists() {
             fs::create_dir_all(&app_config_dir)
-                .map_err(|e| format!("Failed to create config dir: {}", e))?;
+                .map_err(|e| format!("Failed to create config dir: {e}"))?;
         }
 
         let db_path = app_config_dir.join("omnigate.db");
 
         let conn = Connection::open(&db_path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
+            .map_err(|e| format!("Failed to open database: {e}"))?;
 
         // 启用外键约束
         conn.execute("PRAGMA foreign_keys = ON;", [])
-            .map_err(|e| format!("Failed to enable foreign keys: {}", e))?;
+            .map_err(|e| format!("Failed to enable foreign keys: {e}"))?;
 
         let manager = Self { conn: Mutex::new(conn) };
-        manager.create_tables().map_err(|e| format!("Failed to create tables: {}", e))?;
-        manager.cleanup_old_usage_statistics().map_err(|e| format!("Failed to cleanup old usage statistics: {}", e))?;
+        manager.create_tables().map_err(|e| format!("Failed to create tables: {e}"))?;
+        manager.cleanup_old_usage_statistics().map_err(|e| format!("Failed to cleanup old usage statistics: {e}"))?;
         Ok(manager)
     }
 

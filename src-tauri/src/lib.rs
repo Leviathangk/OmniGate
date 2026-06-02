@@ -71,7 +71,7 @@ pub fn run() {
                         loop {
                             interval.tick().await;
                             if let Err(e) = db_for_cleanup.cleanup_old_usage_statistics() {
-                                eprintln!("Failed to run daily cleanup: {}", e);
+                                eprintln!("Failed to run daily cleanup: {e}");
                             }
                         }
                     });
@@ -122,7 +122,7 @@ pub fn run() {
                     });
                 }
                 Err(e) => {
-                    eprintln!("Failed to initialize database: {}", e);
+                    eprintln!("Failed to initialize database: {e}");
                     // 即使数据库初始化失败，在开发/Mock阶段我们也可以继续启动
                 }
             }
