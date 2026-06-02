@@ -5,9 +5,7 @@ use super::router::create_router;
 
 use std::sync::atomic::Ordering;
 
-pub async fn start_proxy_server(port: u16, db: Arc<crate::database::DbManager>, proxy_running: Arc<std::sync::atomic::AtomicBool>, app_handle: tauri::AppHandle) {
-    // Initialize our load balancer strategy
-    let balancer = Arc::new(Balancer::new(db.clone()));
+pub async fn start_proxy_server(port: u16, db: Arc<crate::database::DbManager>, balancer: Arc<Balancer>, proxy_running: Arc<std::sync::atomic::AtomicBool>, app_handle: tauri::AppHandle) {
 
     // Setup mpsc channel for usage stats
     let (usage_tx, mut usage_rx) = tokio::sync::mpsc::unbounded_channel::<crate::database::UsageStatMessage>();

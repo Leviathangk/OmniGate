@@ -7,6 +7,8 @@ pub struct ProxyProvider {
     pub protocol: String,
     pub api_url: String,
     pub api_key: String,
+    pub billing_type: String,
+    pub reset_time: Option<String>,
     pub weight: u32,
     pub sort_order: u32,
 }

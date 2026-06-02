@@ -60,6 +60,8 @@ pub struct ProviderRow {
     pub api_key: String,
     pub protocol: String,
     pub is_active: bool,
+    pub billing_type: String,
+    pub reset_time: Option<String>,
 }
 
 pub struct ModelRow {
@@ -389,11 +391,17 @@ impl DbManager {
                 api_key TEXT NOT NULL,
                 protocol TEXT NOT NULL,
                 is_active INTEGER DEFAULT 1,
+                billing_type TEXT DEFAULT 'pay_as_you_go',
+                reset_time TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );",
             [],
         ).map_err(|e| e.to_string())?;
+
+        // 尝试无损升级现有表结构
+        let _ = conn.execute("ALTER TABLE providers ADD COLUMN billing_type TEXT DEFAULT 'pay_as_you_go';", []);
+        let _ = conn.execute("ALTER TABLE providers ADD COLUMN reset_time TEXT;", []);
 
         // 2. 供应商模型表（含能力字段）
         conn.execute(
@@ -566,14 +574,16 @@ impl DbManager {
         api_url: &str,
         api_key: &str,
         protocol: &str,
+        billing_type: &str,
+        reset_time: Option<&str>,
     ) -> Result<String, String> {
         let conn = self.conn.lock().unwrap();
         let id = generate_uuid();
         let now = Utc::now().timestamp_millis();
         conn.execute(
-            "INSERT INTO providers (id, name, api_url, api_key, protocol, is_active, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6);",
-            rusqlite::params![id, name, api_url, api_key, protocol, now],
+            "INSERT INTO providers (id, name, api_url, api_key, protocol, is_active, billing_type, reset_time, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, ?8, ?8);",
+            rusqlite::params![id, name, api_url, api_key, protocol, billing_type, reset_time, now],
         ).map_err(|e| e.to_string())?;
         Ok(id)
     }
@@ -581,7 +591,7 @@ impl DbManager {
     pub fn get_all_providers(&self) -> Result<Vec<ProviderRow>, String> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, api_url, api_key, protocol, is_active FROM providers ORDER BY created_at ASC;"
+            "SELECT id, name, api_url, api_key, protocol, is_active, billing_type, reset_time FROM providers ORDER BY created_at ASC;"
         ).map_err(|e| e.to_string())?;
 
         let rows = stmt.query_map([], |row| {
@@ -592,6 +602,8 @@ impl DbManager {
                 api_key: row.get(3)?,
                 protocol: row.get(4)?,
                 is_active: row.get::<_, i64>(5)? != 0,
+                billing_type: row.get(6)?,
+                reset_time: row.get(7)?,
             })
         }).map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
@@ -607,11 +619,13 @@ impl DbManager {
         api_url: &str,
         api_key: &str,
         protocol: &str,
+        billing_type: &str,
+        reset_time: Option<&str>,
     ) -> Result<(), String> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE providers SET name = ?1, api_url = ?2, api_key = ?3, protocol = ?4 WHERE id = ?5",
-            rusqlite::params![name, api_url, api_key, protocol, id],
+            "UPDATE providers SET name = ?1, api_url = ?2, api_key = ?3, protocol = ?4, billing_type = ?5, reset_time = ?6 WHERE id = ?7",
+            rusqlite::params![name, api_url, api_key, protocol, billing_type, reset_time, id],
         )
         .map_err(|e| e.to_string())?;
         Ok(())

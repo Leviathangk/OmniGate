@@ -25,6 +25,7 @@ interface ClientConfigTabProps {
   hijackProviderName: string;
   setHijackProviderName: (name: string) => void;
   reapplyProxyConfig: (clientId: string) => Promise<void>;
+  activeProviders: Record<string, string>;
 }
 
 const WeightInput = ({ value, onChange, disabled }: { value: number, onChange: (val: number) => void, disabled: boolean }) => {
@@ -79,7 +80,8 @@ export function ClientConfigTab({
   setClientConfigs,
   hijackProviderName,
   setHijackProviderName,
-  reapplyProxyConfig
+  reapplyProxyConfig,
+  activeProviders
 }: ClientConfigTabProps) {
   const [opencodeDirectList, setOpencodeDirectList] = React.useState<string[]>([]);
   
@@ -246,14 +248,18 @@ export function ClientConfigTab({
                       const globalProvider = providers.find(gp => gp.id === p.id);
                       const isGloballyDisabled = globalProvider ? !globalProvider.is_active : false;
                       const isPinned = config.strategy === "manual" && (config.manual_provider_id ? p.id === config.manual_provider_id : pIndex === 0);
+                      const isActive = activeProviders[config.client_id] === p.id;
 
                       return (
                         <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : (config.strategy === "manual" && !isPinned ? { opacity: 0.4 } : {})}>
                           <td style={{ fontWeight: "600" }}>
-                            <div style={{ display: "flex", alignItems: "center" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              {isActive && (
+                                <div title="当前生效路由" style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "hsl(var(--success))", boxShadow: "0 0 6px hsl(var(--success) / 0.6)" }}></div>
+                              )}
                               {p.name}
                               {isPinned && (
-                                <span style={{ marginLeft: "8px", fontSize: "0.65rem", fontWeight: "normal", padding: "2px 6px", borderRadius: "4px", backgroundColor: "hsl(var(--primary))", color: "#fff" }}>当前手动选择</span>
+                                <span style={{ fontSize: "0.65rem", fontWeight: "normal", padding: "2px 6px", borderRadius: "4px", backgroundColor: "hsl(var(--primary))", color: "#fff" }}>当前手动选择</span>
                               )}
                             </div>
                             <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{p.api_url}</div>

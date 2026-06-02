@@ -14,6 +14,10 @@ interface SettingsTabProps {
   setGlobalMaxRetries: (val: number) => void;
   globalMaxRetryTimeout: number | "";
   setGlobalMaxRetryTimeout: (val: number | "") => void;
+  globalResetEnabled: boolean;
+  setGlobalResetEnabled: (val: boolean) => void;
+  globalResetTime: string;
+  setGlobalResetTime: (val: string) => void;
 }
 
 export function SettingsTab({
@@ -27,15 +31,94 @@ export function SettingsTab({
   globalMaxRetries,
   setGlobalMaxRetries,
   globalMaxRetryTimeout,
-  setGlobalMaxRetryTimeout
+  setGlobalMaxRetryTimeout,
+  globalResetEnabled,
+  setGlobalResetEnabled,
+  globalResetTime,
+  setGlobalResetTime
 }: SettingsTabProps) {
   return (
     <div>
       <div className="tabs-control-row">
+        <button className={`tab-select-btn ${settingsSubTab === "strategy" ? "active" : ""}`} onClick={() => setSettingsSubTab("strategy")}>全局调度策略</button>
         <button className={`tab-select-btn ${settingsSubTab === "proxy" ? "active" : ""}`} onClick={() => setSettingsSubTab("proxy")}>本地网关接管</button>
         <button className={`tab-select-btn ${settingsSubTab === "database" ? "active" : ""}`} onClick={() => setSettingsSubTab("database")}>数据库管理</button>
         <button className={`tab-select-btn ${settingsSubTab === "about" ? "active" : ""}`} onClick={() => setSettingsSubTab("about")}>关于</button>
       </div>
+
+      {settingsSubTab === "strategy" && (
+        <>
+          <div className="panel-card">
+            <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "8px" }}>全局网络防风控与重试策略</h3>
+            <p style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: "20px" }}>当上游大模型 API 返回 429 Rate Limit 或 502 等临时错误时，OmniGate 将自动启用指数级退避重试 (Exponential Backoff)。重试间隔会以 2s, 4s, 8s 递增直到触发单次最大延迟。</p>
+            
+            <div className="form-group" style={{ marginBottom: "16px" }}>
+              <label>全局失败重试上限</label>
+              <CustomSelect 
+                value={globalMaxRetries.toString()}
+                onChange={(val) => setGlobalMaxRetries(parseInt(val as string))}
+                options={[
+                  { value: "3", label: "3" },
+                  { value: "5", label: "5" },
+                  { value: "10", label: "10" },
+                  { value: "15", label: "15" }
+                ]}
+              />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: "24px" }}>
+              <label>最大单次重试等待时间 (秒)</label>
+              <input 
+                type="number" 
+                className="modal-input" 
+                value={globalMaxRetryTimeout} 
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val === "") setGlobalMaxRetryTimeout("");
+                  else setGlobalMaxRetryTimeout(parseInt(val));
+                }}
+                onBlur={() => {
+                  if (globalMaxRetryTimeout === "" || (globalMaxRetryTimeout as number) < 1) {
+                    setGlobalMaxRetryTimeout(120);
+                  }
+                }}
+                max="300"
+                placeholder="默认 120" 
+              />
+              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "6px" }}>决定指数递增的上限，例如设置为 30 秒，则重试间隔最大停留在 30 秒，防止过长的阻塞。</p>
+            </div>
+          </div>
+
+          <div className="panel-card" style={{ marginTop: "16px" }}>
+            <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "8px" }}>优先级重置调度</h3>
+            <p style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: "20px" }}>您可以开启全局统一定时重置优先级，或依赖于每个供应商独立配置的计费周期进行惩罚衰减。</p>
+
+            <div className="form-group" style={{ marginBottom: "16px" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontWeight: "normal" }}>
+                <input 
+                  type="checkbox" 
+                  checked={globalResetEnabled} 
+                  onChange={e => setGlobalResetEnabled(e.target.checked)} 
+                  style={{ width: "16px", height: "16px", accentColor: "hsl(var(--primary))" }}
+                />
+                <span style={{ fontWeight: 600 }}>开启全局定时重置 (覆盖所有供应商)</span>
+              </label>
+            </div>
+
+            {globalResetEnabled && (
+              <div className="form-group" style={{ marginBottom: "24px", maxWidth: "200px" }}>
+                <label>全局统一重置时间 (HH:MM)</label>
+                <input 
+                  type="time" 
+                  className="modal-input" 
+                  value={globalResetTime} 
+                  onChange={e => setGlobalResetTime(e.target.value)} 
+                />
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {settingsSubTab === "proxy" && (
         <div className="panel-card">
@@ -67,51 +150,6 @@ export function SettingsTab({
               onChange={e => setHijackApiKey(e.target.value)} 
               placeholder="点击右上角随机生成..." 
             />
-          </div>
-        </div>
-      )}
-
-      {settingsSubTab === "proxy" && (
-        <div className="panel-card" style={{ marginTop: "16px" }}>
-          <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "8px" }}>全局网络防风控与重试策略</h3>
-          <p style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: "20px" }}>当上游大模型 API 返回 429 Rate Limit 或 502 等临时错误时，OmniGate 将自动启用指数级退避重试 (Exponential Backoff)。重试间隔会以 2s, 4s, 8s 递增直到触发单次最大延迟。</p>
-          
-          <div className="form-group" style={{ marginBottom: "16px" }}>
-            <label>全局失败重试上限</label>
-            <CustomSelect 
-              value={globalMaxRetries.toString()}
-              onChange={(val) => setGlobalMaxRetries(parseInt(val as string))}
-              options={[
-                { value: "3", label: "3" },
-                { value: "5", label: "5" },
-                { value: "10", label: "10" },
-                { value: "15", label: "15" },
-                { value: "-1", label: "无限" }
-              ]}
-            />
-          </div>
-
-          <div className="form-group" style={{ marginBottom: "24px" }}>
-            <label>最大单次重试等待时间 (秒)</label>
-            <input 
-              type="number" 
-              className="modal-input" 
-              value={globalMaxRetryTimeout} 
-              onChange={e => {
-                const val = e.target.value;
-                if (val === "") setGlobalMaxRetryTimeout("");
-                else setGlobalMaxRetryTimeout(parseInt(val));
-              }}
-              onBlur={() => {
-                if (globalMaxRetryTimeout === "" || (globalMaxRetryTimeout as number) < 1) {
-                  setGlobalMaxRetryTimeout(120);
-                }
-              }}
-              min="1"
-              max="300"
-              placeholder="默认 120" 
-            />
-            <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "6px" }}>决定指数递增的上限，例如设置为 30 秒，则重试间隔最大停留在 30 秒，防止过长的阻塞。</p>
           </div>
         </div>
       )}

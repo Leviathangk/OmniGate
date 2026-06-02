@@ -1,6 +1,6 @@
 import React from "react";
 import { Sparkles, Activity, Terminal, Share2, Info, ChevronRight, Check, RotateCw } from "lucide-react";
-import { Model, getUrlPreview, renderModelPullingInterface } from "../../App";
+import { Model, getUrlPreview, renderModelPullingInterface, CustomSelect } from "../../App";
 
 interface AddProviderModalProps {
   showAddProviderModal: boolean;
@@ -15,6 +15,10 @@ interface AddProviderModalProps {
   setNewProvProtocol: (protocol: string) => void;
   newProvKey: string;
   setNewProvKey: (key: string) => void;
+  newProvBillingType: string;
+  setNewProvBillingType: (type: string) => void;
+  newProvResetTime: string;
+  setNewProvResetTime: (time: string) => void;
   isFetchingModels: boolean;
   fetchModelsError: string | null;
   setFetchModelsError: (error: string | null) => void;
@@ -43,6 +47,10 @@ export function AddProviderModal({
   setNewProvProtocol,
   newProvKey,
   setNewProvKey,
+  newProvBillingType,
+  setNewProvBillingType,
+  newProvResetTime,
+  setNewProvResetTime,
   isFetchingModels,
   fetchModelsError,
   setFetchModelsError,
@@ -114,6 +122,37 @@ export function AddProviderModal({
                 <div className="form-group">
                   <label>API 授权密钥 (API Key)</label>
                   <input type="password" placeholder="sk-..." value={newProvKey} onChange={(e) => setNewProvKey(e.target.value)} />
+                </div>
+                
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label>计费类型</label>
+                    <CustomSelect 
+                      value={newProvBillingType} 
+                      onChange={(val) => {
+                        const v = val as string;
+                        setNewProvBillingType(v);
+                        if (v === "pay_as_you_go") setNewProvResetTime("1");
+                        else setNewProvResetTime("00:00");
+                      }}
+                      options={[
+                        { value: "pay_as_you_go", label: "周期制" },
+                        { value: "subscription", label: "订阅制" }
+                      ]}
+                    />
+                  </div>
+                  {newProvBillingType === "subscription" && (
+                    <div className="form-group" style={{ flex: 1 }}>
+                      <label>重置时间 (HH:MM)</label>
+                      <input type="time" value={newProvResetTime} onChange={(e) => setNewProvResetTime(e.target.value)} />
+                    </div>
+                  )}
+                  {newProvBillingType === "pay_as_you_go" && (
+                    <div className="form-group" style={{ flex: 1 }}>
+                      <label>重置周期 (小时)</label>
+                      <input type="number" min="1" max="720" value={newProvResetTime} onChange={(e) => setNewProvResetTime(e.target.value)} />
+                    </div>
+                  )}
                 </div>
               </div>
 

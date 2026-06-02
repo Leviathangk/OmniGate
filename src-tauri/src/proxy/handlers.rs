@@ -248,7 +248,7 @@ pub async fn handle_claude_messages(
             }
         }
         // 该供应商所有次数耗尽，记录惩罚，继续下一个供应商
-        state.balancer.record_failure(&provider.id);
+        state.balancer.record_failure(&provider.id, &state.app_handle);
     }
 
     let (status_code, error_type, msg) = if all_providers_skipped {
@@ -387,7 +387,7 @@ pub async fn handle_opencode_claude(
                 }
             }
         }
-        state.balancer.record_failure(&provider.id);
+        state.balancer.record_failure(&provider.id, &state.app_handle);
     }
 
     let msg = if last_error.is_empty() { "[OmniGate] 所有上游供应商均请求失败。".to_string() }
@@ -517,7 +517,7 @@ pub async fn handle_opencode_resp(
                 }
             }
         }
-        state.balancer.record_failure(&provider.id);
+        state.balancer.record_failure(&provider.id, &state.app_handle);
     }
 
     let msg = if last_error.is_empty() { "[OmniGate] 所有上游供应商均请求失败。".to_string() }
@@ -635,7 +635,7 @@ pub async fn handle_opencode_chat(
                 }
             }
         }
-        state.balancer.record_failure(&provider.id);
+        state.balancer.record_failure(&provider.id, &state.app_handle);
     }
 
     let msg = if last_error.is_empty() { "[OmniGate] 所有上游供应商均请求失败。".to_string() }
@@ -790,7 +790,7 @@ pub async fn handle_codex_proxy(
             }
         }
         // 该供应商所有次数耗尽，继续下一个供应商
-        state.balancer.record_failure(&provider.id);
+        state.balancer.record_failure(&provider.id, &state.app_handle);
     }
 
     let msg = if last_error.is_empty() {

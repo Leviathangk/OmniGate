@@ -3,6 +3,14 @@ use rand::Rng;
 use std::sync::{Arc, RwLock};
 use crate::database::DbManager;
 use std::collections::HashMap;
+use chrono::{Utc, NaiveTime, Local, TimeZone};
+use tauri::Emitter;
+
+#[derive(Debug, Clone)]
+pub struct PenaltyInfo {
+    pub count: u32,
+    pub last_penalty_time: i64,
+}
 
 pub struct RoutingPlan {
     pub providers: Vec<ProxyProvider>,
@@ -10,7 +18,7 @@ pub struct RoutingPlan {
 
 pub struct Balancer {
     db: Arc<DbManager>,
-    penalties: RwLock<HashMap<String, u32>>,
+    penalties: RwLock<HashMap<String, PenaltyInfo>>,
 }
 
 impl Balancer {
@@ -21,16 +29,24 @@ impl Balancer {
         }
     }
 
-    pub fn record_failure(&self, provider_id: &str) {
+    pub fn record_failure(&self, provider_id: &str, app_handle: &tauri::AppHandle) {
         if let Ok(mut map) = self.penalties.write() {
-            let penalty = map.entry(provider_id.to_string()).or_insert(0);
-            if *penalty < 10 { // Max penalty is 10
-                *penalty += 1;
+            let now = Utc::now().timestamp();
+            let penalty = map.entry(provider_id.to_string()).or_insert(PenaltyInfo { count: 0, last_penalty_time: now });
+            if penalty.count < 10 { // Max penalty is 10
+                penalty.count += 1;
             }
+            penalty.last_penalty_time = now;
         }
+        let _ = app_handle.emit("active_provider_changed", ());
     }
 
-    pub fn record_success(&self, provider_id: &str) {
+    pub fn record_success(&self, _provider_id: &str) {
+        // success doesn't reset penalty anymore, it's lazy time-based!
+        // or we could decrement it? No, keep it simple.
+    }
+
+    pub fn reset_penalty(&self, provider_id: &str) {
         if let Ok(mut map) = self.penalties.write() {
             map.remove(provider_id);
         }
@@ -66,6 +82,8 @@ impl Balancer {
                         protocol: p.protocol.clone(),
                         api_url: p.api_url.clone(),
                         api_key: p.api_key.clone(),
+                        billing_type: p.billing_type.clone(),
+                        reset_time: p.reset_time.clone(),
                         weight: cp.weight,
                         sort_order: cp.sort_order,
                     })
@@ -79,11 +97,75 @@ impl Balancer {
             return None;
         }
 
+        let global_reset_enabled = self.db.get_global_setting("global_reset_enabled", "false") == "true";
+        let global_reset_time = self.db.get_global_setting("global_reset_time", "00:00");
+
+        // Helper function for reset timestamp
+        let get_recent_reset_timestamp = |time_str: &str| -> i64 {
+            let now = Local::now();
+            let parts: Vec<&str> = time_str.split(':').collect();
+            if parts.len() == 2 {
+                if let (Ok(h), Ok(m)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                    if let Some(time) = NaiveTime::from_hms_opt(h, m, 0) {
+                        if let Some(mut reset_datetime) = Local.from_local_datetime(&now.date_naive().and_time(time)).single() {
+                            if reset_datetime > now {
+                                reset_datetime -= chrono::Duration::try_days(1).unwrap();
+                            }
+                            return reset_datetime.timestamp();
+                        }
+                    }
+                }
+            }
+            0
+        };
+
+        // --- 惰性评估时间并清空过期惩罚 ---
+        if let Ok(mut write_map) = self.penalties.write() {
+            let now_ts = Utc::now().timestamp();
+            let global_reset_ts = if global_reset_enabled { get_recent_reset_timestamp(&global_reset_time) } else { 0 };
+
+            for p in &attached_providers {
+                if let Some(penalty) = write_map.get(&p.id) {
+                    let mut should_reset = false;
+                    
+                    if global_reset_enabled {
+                        if penalty.last_penalty_time < global_reset_ts {
+                            should_reset = true;
+                        }
+                    } else {
+                        if p.billing_type == "subscription" {
+                            let reset_time_str = p.reset_time.as_deref().unwrap_or("00:00");
+                            let reset_ts = get_recent_reset_timestamp(reset_time_str);
+                            if penalty.last_penalty_time < reset_ts {
+                                should_reset = true;
+                            }
+                            // 对于订阅制，除了到点重置，如果宕机超过 1 小时也自动释放惩罚，应对临时服务挂掉
+                            if penalty.last_penalty_time < now_ts - 3600 {
+                                should_reset = true;
+                            }
+                        } else {
+                            // pay_as_you_go: custom hours decay (default 1 hour)
+                            let hours_str = p.reset_time.as_deref().unwrap_or("1");
+                            let hours = hours_str.parse::<i64>().unwrap_or(1);
+                            if penalty.last_penalty_time < now_ts - (hours * 3600) {
+                                should_reset = true;
+                            }
+                        }
+                    }
+
+                    if should_reset {
+                        write_map.remove(&p.id);
+                    }
+                }
+            }
+        }
+
         // --- 惩罚降级与“大家平权”逻辑 ---
         if let Ok(map) = self.penalties.read() {
             let mut all_penalized = true;
             for p in &attached_providers {
-                if *map.get(&p.id).unwrap_or(&0) == 0 {
+                let count = map.get(&p.id).map(|info| info.count).unwrap_or(0);
+                if count == 0 {
                     all_penalized = false;
                     break;
                 }
@@ -103,7 +185,7 @@ impl Balancer {
         // 应用惩罚到临时副本
         if let Ok(map) = self.penalties.read() {
             for p in &mut attached_providers {
-                let penalty = *map.get(&p.id).unwrap_or(&0);
+                let penalty = map.get(&p.id).map(|info| info.count).unwrap_or(0);
                 if penalty > 0 {
                     // 顺序模式：每次惩罚将排序后延 1000 位
                     p.sort_order = p.sort_order.saturating_add(penalty * 1000);

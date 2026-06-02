@@ -27,6 +27,7 @@ use std::sync::atomic::AtomicBool;
 pub struct AppState {
     pub db: Arc<DbManager>,
     pub proxy_running: Arc<AtomicBool>,
+    pub balancer: Arc<crate::proxy::balancer::Balancer>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -43,20 +44,23 @@ pub fn run() {
             let config_dir = app.path().app_config_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from(".config"));
             
-            match DbManager::init(config_dir) {
+            match DbManager::init(config_dir.clone()) {
                 Ok(db) => {
                     let db_arc = Arc::new(db);
+                    let balancer = Arc::new(crate::proxy::balancer::Balancer::new(db_arc.clone()));
                     let proxy_running = Arc::new(AtomicBool::new(false));
                     app.manage(AppState { 
                         db: db_arc.clone(),
                         proxy_running: proxy_running.clone(),
+                        balancer: balancer.clone(),
                     });
                     
                     // Start proxy server on default port 3456
                     let proxy_db_arc = db_arc.clone();
+                    let proxy_balancer_arc = balancer.clone();
                     let proxy_app_handle = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
-                        proxy::server::start_proxy_server(3456, proxy_db_arc, proxy_running, proxy_app_handle).await;
+                        proxy::server::start_proxy_server(3456, proxy_db_arc, proxy_balancer_arc, proxy_running, proxy_app_handle).await;
                     });
                     
                     // Daily cleanup loop
@@ -225,6 +229,8 @@ pub fn run() {
             commands::get_providers,
             commands::add_provider,
             commands::update_provider_info,
+            commands::reset_provider_penalty,
+            commands::get_current_active_provider,
             commands::toggle_provider,
             commands::check_provider_usage,
             commands::cascade_delete_provider,

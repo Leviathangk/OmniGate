@@ -92,6 +92,8 @@ export interface Provider {
   api_url: string;
   api_key: string;
   protocol: string;
+  billing_type: string;
+  reset_time?: string;
   is_active: boolean;
   weight: number;
   priority: number;
@@ -123,6 +125,8 @@ export interface ImportPreviewItem {
   api_url: string;
   api_key: string;
   protocol: string;
+  billing_type: string;
+  reset_time?: string | null;
   is_active: boolean;
   models: Array<{
     name: string;
@@ -767,6 +771,9 @@ function App() {
   const [globalMaxRetries, setGlobalMaxRetries] = useState<number>(2);
   const [globalMaxRetryTimeout, setGlobalMaxRetryTimeout] = useState<number | "">(120);
   const [globalRequestTimeout, setGlobalRequestTimeout] = useState<number>(120);
+  const [globalResetEnabled, setGlobalResetEnabled] = useState<boolean>(false);
+  const [globalResetTime, setGlobalResetTime] = useState<string>("00:00");
+  const [activeProviders, setActiveProviders] = useState<Record<string, string>>({});
   const globalSettingsReadyRef = useRef(false);
 
   const [toastMessage, setToastMessage] = useState("");
@@ -802,7 +809,8 @@ function App() {
   }, [activeTab]);
 
   useEffect(() => {
-    const unlistenError = listen("provider-error", (event: any) => {
+    let unlisten: (() => void) | undefined;
+    listen("provider-error", (event: any) => {
       const payload = event.payload;
       const now = Date.now();
       const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
@@ -835,10 +843,10 @@ function App() {
           }, ...valid].slice(0, 50);
         }
       });
-    });
+    }).then(u => { unlisten = u; });
 
     return () => {
-      unlistenError.then(f => f());
+      if (unlisten) unlisten();
     };
   }, []);
 
@@ -855,7 +863,7 @@ function App() {
 
   const [clientSubTab, setClientSubTab] = useState<string>("claude");
   const [globalPromptSubTab, setGlobalPromptSubTab] = useState<string>("claude");
-  const [settingsSubTab, setSettingsSubTab] = useState<string>("proxy");
+  const [settingsSubTab, setSettingsSubTab] = useState<string>("strategy");
   const [showAddProviderModal, setShowAddProviderModal] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<number>(1);
   
@@ -869,6 +877,8 @@ function App() {
   const [newProvUrl, setNewProvUrl] = useState<string>("");
   const [newProvKey, setNewProvKey] = useState<string>("");
   const [newProvProtocol, setNewProvProtocol] = useState<string>("claude");
+  const [newProvBillingType, setNewProvBillingType] = useState<string>("pay_as_you_go");
+  const [newProvResetTime, setNewProvResetTime] = useState<string>("1");
   const [isFetchingModels, setIsFetchingModels] = useState<boolean>(false);
   const [fetchedModels, setFetchedModels] = useState<Model[]>([]);
   // 向导中已选中（要添加）的模型名称列表
@@ -898,6 +908,31 @@ function App() {
   // 新增的向导模型选择搜索与标签过滤状态
   const [wizardSearchQuery, setWizardSearchQuery] = useState<string>("");
   const [wizardFeatureTab, setWizardFeatureTab] = useState<string>("all");
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen("active_provider_changed", async () => {
+      if (!clientConfigs) return;
+      const newActive: Record<string, string> = {};
+      for (const config of clientConfigs) {
+        if (config.is_enabled) {
+          try {
+            const activeId = await invoke<string | null>("get_current_active_provider", { clientId: config.client_id });
+            if (activeId) {
+              newActive[config.client_id] = activeId;
+            }
+          } catch (e) {
+            console.error("Failed to get active provider for", config.client_id, e);
+          }
+        }
+      }
+      setActiveProviders(newActive);
+    }).then(u => { unlisten = u; });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [clientConfigs]);
 
   // ---- 导入/导出 状态 ----
   const [showImportModal, setShowImportModal] = useState<boolean>(false);
@@ -950,7 +985,7 @@ function App() {
   // 加载核心数据（从真实 SQLite 后端）
   const loadData = async () => {
     try {
-      const [overview, provList, loadedClientConfigs, traffic, recent, dist, heatmap, maxRetriesStr, maxRetryTimeoutStr, requestTimeoutStr] = await Promise.all([
+      const [overview, provList, loadedClientConfigs, traffic, recent, dist, heatmap, maxRetriesStr, maxRetryTimeoutStr, requestTimeoutStr, globalResetEnabledStr, globalResetTimeStr] = await Promise.all([
         invoke<UsageOverview>("get_usage_overview"),
         invoke<Provider[]>("get_providers"),
 
@@ -961,7 +996,9 @@ function App() {
         invoke<HeatmapData[]>("get_heatmap_data"),
         invoke<string>("get_global_setting", { key: "max_retries", defaultVal: "2" }),
         invoke<string>("get_global_setting", { key: "max_retry_timeout", defaultVal: "120" }),
-        invoke<string>("get_global_setting", { key: "request_timeout", defaultVal: "120" })
+        invoke<string>("get_global_setting", { key: "request_timeout", defaultVal: "120" }),
+        invoke<string>("get_global_setting", { key: "global_reset_enabled", defaultVal: "false" }),
+        invoke<string>("get_global_setting", { key: "global_reset_time", defaultVal: "00:00" })
       ]);
       setTrafficTrend(traffic);
       setRecentActivities(recent);
@@ -973,6 +1010,8 @@ function App() {
       setGlobalMaxRetries(parseInt(maxRetriesStr as string || "2"));
       setGlobalMaxRetryTimeout(parseInt(maxRetryTimeoutStr as string || "120"));
       setGlobalRequestTimeout(parseInt(requestTimeoutStr as string || "120"));
+      setGlobalResetEnabled(globalResetEnabledStr === "true");
+      setGlobalResetTime(globalResetTimeStr);
       globalSettingsReadyRef.current = true;
 
       let targetConfigs = loadedClientConfigs;
@@ -1088,8 +1127,10 @@ function App() {
       invoke("set_global_setting", { key: "max_retries", value: globalMaxRetries.toString() }).catch(console.error);
       invoke("set_global_setting", { key: "max_retry_timeout", value: (globalMaxRetryTimeout || 120).toString() }).catch(console.error);
       invoke("set_global_setting", { key: "request_timeout", value: globalRequestTimeout.toString() }).catch(console.error);
+      invoke("set_global_setting", { key: "global_reset_enabled", value: globalResetEnabled ? "true" : "false" }).catch(console.error);
+      invoke("set_global_setting", { key: "global_reset_time", value: globalResetTime }).catch(console.error);
     }
-  }, [globalMaxRetries, globalMaxRetryTimeout, globalRequestTimeout]);
+  }, [globalMaxRetries, globalMaxRetryTimeout, globalRequestTimeout, globalResetEnabled, globalResetTime]);
 
   // ============================================================================
   // 事件处理逻辑
@@ -1164,6 +1205,8 @@ function App() {
         apiUrl: editConnectionData.api_url,
         apiKey: editConnectionData.api_key,
         protocol: editConnectionData.protocol,
+        billingType: editConnectionData.billing_type || "pay_as_you_go",
+        resetTime: editConnectionData.reset_time || (editConnectionData.billing_type === "subscription" ? "00:00" : "1"),
       });
       // 更新本地状态
       setProviders(prev => prev.map(p => p.id === editConnectionData.id ? editConnectionData : p));
@@ -1254,6 +1297,16 @@ function App() {
     } catch (err) {
       alert("⚠️ 获取使用情况失败: " + String(err));
       console.error("检查供应商使用情况失败:", err);
+    }
+  };
+
+  const handleResetProviderPenalty = async (id: string) => {
+    try {
+      await invoke("reset_provider_penalty", { id });
+      setToastMessage("已手动重置该供应商的优先级惩罚状态");
+      setTimeout(() => setToastMessage(""), 3000);
+    } catch (e) {
+      alert("重置惩罚失败: " + e);
     }
   };
 
@@ -1373,6 +1426,8 @@ function App() {
             api_url: p.api_url ?? "",
             api_key: p.api_key ?? "",
             protocol: p.protocol ?? "codex_chat",
+            billing_type: p.billing_type ?? "pay_as_you_go",
+            reset_time: p.reset_time ?? (p.billing_type === "subscription" ? "00:00" : "1"),
             is_active: p.is_active ?? true,
             models: Array.isArray(p.models) ? p.models : [],
             alreadyExists,
@@ -1406,6 +1461,8 @@ function App() {
         apiUrl: item.api_url,
         apiKey: item.api_key,
         protocol: item.protocol,
+        billingType: item.billing_type,
+        resetTime: item.reset_time,
       });
 
       // 2. 批量写入所有模型（后端用 add_models_to_provider 接收 model_names 列表）
@@ -1782,12 +1839,15 @@ function App() {
         apiUrl: newProvUrl,
         apiKey: newProvKey,
         protocol: newProvProtocol,
+        billingType: newProvBillingType,
+        resetTime: newProvResetTime,
       });
       await loadData();
       setShowAddProviderModal(false);
       setWizardStep(1);
       setFetchModelsError(null);
       setNewProvName(""); setNewProvUrl(""); setNewProvKey(""); setNewProvProtocol("claude");
+      setNewProvBillingType("pay_as_you_go"); setNewProvResetTime("1");
       setFetchedModels([]); setSelectedFetchedModelNames([]);
     } catch (err) {
       alert("保存供应商失败: " + err);
@@ -1805,6 +1865,8 @@ function App() {
         apiUrl: newProvUrl,
         apiKey: newProvKey,
         protocol: newProvProtocol,
+        billingType: newProvBillingType,
+        resetTime: newProvResetTime,
       });
       // 2. 批量保存已选模型
       await invoke<number>("add_models_to_provider", {
@@ -1817,6 +1879,7 @@ function App() {
       setShowAddProviderModal(false);
       setWizardStep(1);
       setNewProvName(""); setNewProvUrl(""); setNewProvKey(""); setNewProvProtocol("claude");
+      setNewProvBillingType("pay_as_you_go"); setNewProvResetTime("1");
       setFetchedModels([]); setSelectedFetchedModelNames([]);
     } catch (err) {
       alert("保存失败: " + err);
@@ -2078,6 +2141,7 @@ function App() {
               handleOpenProviderDetails={handleOpenProviderDetails}
               handleOpenModelMapping={handleOpenModelMapping}
               handleDeleteProvider={handleDeleteProvider}
+              handleResetProviderPenalty={handleResetProviderPenalty}
             />
           )}
 
@@ -2163,6 +2227,7 @@ function App() {
               hijackProviderName={hijackProviderName}
               setHijackProviderName={setHijackProviderName}
               reapplyProxyConfig={reapplyProxyConfig}
+              activeProviders={activeProviders}
             />
           )}
 
@@ -2201,6 +2266,10 @@ function App() {
               setGlobalMaxRetries={setGlobalMaxRetries}
               globalMaxRetryTimeout={globalMaxRetryTimeout}
               setGlobalMaxRetryTimeout={setGlobalMaxRetryTimeout}
+              globalResetEnabled={globalResetEnabled}
+              setGlobalResetEnabled={setGlobalResetEnabled}
+              globalResetTime={globalResetTime}
+              setGlobalResetTime={setGlobalResetTime}
             />
           )}
 
@@ -2282,6 +2351,10 @@ function App() {
         setNewProvProtocol={setNewProvProtocol}
         newProvKey={newProvKey}
         setNewProvKey={setNewProvKey}
+        newProvBillingType={newProvBillingType}
+        setNewProvBillingType={setNewProvBillingType}
+        newProvResetTime={newProvResetTime}
+        setNewProvResetTime={setNewProvResetTime}
         isFetchingModels={isFetchingModels}
         fetchModelsError={fetchModelsError}
         setFetchModelsError={setFetchModelsError}

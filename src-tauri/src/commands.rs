@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
+use tauri::Emitter;
 use crate::database::{generate_uuid, ModelRow};
 use crate::models_discovery;
 
@@ -14,6 +15,8 @@ pub struct ProviderDto {
     pub api_url: String,
     pub api_key: String,
     pub protocol: String, // "claude", "codex_responses", "codex_chat"
+    pub billing_type: String,
+    pub reset_time: Option<String>,
     pub is_active: bool,
     pub weight: i32,
     pub priority: i32,
@@ -76,6 +79,8 @@ pub struct ClientProviderDto {
     pub name: String,
     pub api_url: String,
     pub protocol: String,
+    pub billing_type: String,
+    pub reset_time: Option<String>,
     pub weight: u32,
     #[serde(default)]
     pub sort_order: u32,
@@ -110,6 +115,8 @@ pub fn get_providers(
         api_url: r.api_url,
         api_key: r.api_key,
         protocol: r.protocol,
+        billing_type: r.billing_type,
+        reset_time: r.reset_time,
         is_active: r.is_active,
         weight: 1,
         priority: 1,
@@ -123,6 +130,8 @@ pub fn add_provider(
     api_url: String,
     api_key: String,
     protocol: String,
+    billing_type: String,
+    reset_time: Option<String>,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<String, String> {
     if name.trim().is_empty() {
@@ -131,7 +140,7 @@ pub fn add_provider(
     if api_url.trim().is_empty() {
         return Err("API URL 不能为空".to_string());
     }
-    let id = state.db.insert_provider(&name, &api_url, &api_key, &protocol)?;
+    let id = state.db.insert_provider(&name, &api_url, &api_key, &protocol, &billing_type, reset_time.as_deref())?;
     Ok(id)
 }
 
@@ -142,6 +151,8 @@ pub fn update_provider_info(
     api_url: String,
     api_key: String,
     protocol: String,
+    billing_type: String,
+    reset_time: Option<String>,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     if name.trim().is_empty() {
@@ -150,13 +161,37 @@ pub fn update_provider_info(
     if api_url.trim().is_empty() {
         return Err("API URL 不能为空".to_string());
     }
-    state.db.update_provider_info(&id, &name, &api_url, &api_key, &protocol)?;
+    state.db.update_provider_info(&id, &name, &api_url, &api_key, &protocol, &billing_type, reset_time.as_deref())?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn check_provider_usage(id: String, state: tauri::State<'_, crate::AppState>) -> Result<crate::database::ProviderUsageReport, String> {
     state.db.get_provider_usage(&id)
+}
+
+#[tauri::command]
+pub fn reset_provider_penalty(
+    id: String,
+    state: tauri::State<'_, crate::AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    state.balancer.reset_penalty(&id);
+    let _ = app_handle.emit("active_provider_changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_current_active_provider(
+    client_id: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<Option<String>, String> {
+    if let Some(plan) = state.balancer.get_routing_plan(&client_id) {
+        if let Some(provider) = plan.providers.first() {
+            return Ok(Some(provider.id.clone()));
+        }
+    }
+    Ok(None)
 }
 
 #[tauri::command]
@@ -758,6 +793,8 @@ pub fn get_client_configs(
                     name: p.name.clone(),
                     api_url: p.api_url.clone(),
                     protocol: p.protocol.clone(),
+                    billing_type: p.billing_type.clone(),
+                    reset_time: p.reset_time.clone(),
                     weight: cp.weight,
                     sort_order: cp.sort_order,
                     is_active: cp.is_active,

@@ -88,6 +88,50 @@ export function ConnectionModal({
               </div>
             </div>
           </div>
+          
+          <div style={{ display: "flex", gap: "12px", marginTop: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+              <label>计费类型</label>
+              <CustomSelect
+                value={editConnectionData.billing_type || "pay_as_you_go"} 
+                onChange={(val) => {
+                  const v = val as string;
+                  setEditConnectionData({ 
+                    ...editConnectionData, 
+                    billing_type: v,
+                    reset_time: v === "pay_as_you_go" ? "1" : "00:00"
+                  });
+                }}
+                options={[
+                  { value: "pay_as_you_go", label: "周期制" },
+                  { value: "subscription", label: "订阅制" }
+                ]}
+              />
+            </div>
+            
+            {editConnectionData.billing_type === "subscription" && (
+              <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                <label>重置时间 (HH:MM)</label>
+                <input 
+                  type="time" 
+                  value={editConnectionData.reset_time || "00:00"} 
+                  onChange={(e) => setEditConnectionData({ ...editConnectionData, reset_time: e.target.value })} 
+                />
+              </div>
+            )}
+            
+            {(!editConnectionData.billing_type || editConnectionData.billing_type === "pay_as_you_go") && (
+              <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                <label>重置周期 (小时)</label>
+                <input 
+                  type="number" 
+                  min="1" max="720" 
+                  value={editConnectionData.reset_time || "1"} 
+                  onChange={(e) => setEditConnectionData({ ...editConnectionData, reset_time: e.target.value })} 
+                />
+              </div>
+            )}
+          </div>
 
           <div style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
             <button className="btn-secondary" onClick={() => setShowProviderConnectionModal(false)}>取消</button>
