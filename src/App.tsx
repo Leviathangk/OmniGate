@@ -32,7 +32,8 @@ import {
   FileText,
   AlertCircle,
   X,
-  Trash2
+  Trash2,
+  MessageSquare
 } from "lucide-react";
 import "./App.css";
 // recharts removed
@@ -40,6 +41,7 @@ import { OverviewTab } from "./components/tabs/OverviewTab";
 import { ProvidersTab } from "./components/tabs/ProvidersTab";
 import { ClientConfigTab } from "./components/tabs/ClientConfigTab";
 import { GlobalPromptsTab } from "./components/tabs/GlobalPromptsTab";
+import { ChatTestTab } from "./components/tabs/ChatTestTab";
 
 import { SettingsTab } from "./components/tabs/SettingsTab";
 import { ConnectionModal } from "./components/modals/ConnectionModal";
@@ -1965,6 +1967,10 @@ function App() {
               <div className="menu-icon"><LayoutDashboard size={17} /></div>
               <span>核心概览</span>
             </li>
+            <li className={`menu-item ${activeTab === "chat_test" ? "active" : ""}`} onClick={() => setActiveTab("chat_test")}>
+              <div className="menu-icon"><MessageSquare size={17} /></div>
+              <span>对话测试</span>
+            </li>
           </ul>
         </div>
 
@@ -2159,6 +2165,13 @@ function App() {
               handleDeleteProvider={handleDeleteProvider}
               handleResetProviderPenalty={handleResetProviderPenalty}
             />
+          )}
+
+          {/* ============================================================================
+              TAB: CHAT TEST (对话测试)
+             ============================================================================ */}
+          {activeTab === "chat_test" && (
+            <ChatTestTab providers={providers} />
           )}
 
           {/* ============================================================================

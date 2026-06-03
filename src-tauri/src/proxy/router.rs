@@ -1,4 +1,5 @@
 use axum::{routing::post, Router};
+use tower_http::cors::{Any, CorsLayer};
 use std::sync::Arc;
 use super::balancer::Balancer;
 use super::handlers;
@@ -45,4 +46,10 @@ pub fn create_router(
         // Fallback
         .fallback(handlers::handle_fallback)
         .with_state(state)
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any)
+        )
 }

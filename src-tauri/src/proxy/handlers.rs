@@ -84,6 +84,30 @@ fn build_json_error(status: StatusCode, code: &str, message: &str) -> axum::resp
         .into_response()
 }
 
+fn get_effective_plan(state: &Arc<AppState>, client_id: &str, headers: &HeaderMap) -> Option<crate::proxy::balancer::RoutingPlan> {
+    if let Some(test_provider_id) = headers.get("x-omnigate-test-provider") {
+        if let Ok(id_str) = test_provider_id.to_str() {
+            if let Ok(providers) = state.db.get_all_providers() {
+                if let Some(p) = providers.into_iter().find(|p| p.id == id_str) {
+                    let proxy_provider = crate::proxy::models::ProxyProvider {
+                        id: p.id,
+                        name: p.name,
+                        api_url: p.api_url,
+                        api_key: p.api_key,
+                        protocol: p.protocol,
+                        billing_type: p.billing_type,
+                        reset_time: p.reset_time,
+                        weight: 1,
+                        sort_order: 1,
+                    };
+                    return Some(crate::proxy::balancer::RoutingPlan { providers: vec![proxy_provider] });
+                }
+            }
+        }
+    }
+    state.balancer.get_routing_plan(client_id)
+}
+
 pub async fn handle_claude_messages(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -102,7 +126,7 @@ pub async fn handle_claude_messages(
     
     let req_path = "/messages".to_string();
 
-    let plan = match state.balancer.get_routing_plan("claude") {
+    let plan = match get_effective_plan(&state, "claude", &headers) {
         Some(p) => p,
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),
     };
@@ -355,7 +379,7 @@ pub async fn handle_opencode_claude(
 
     let req_path = "/messages".to_string();
 
-    let plan = match state.balancer.get_routing_plan("opencode-claude") {
+    let plan = match get_effective_plan(&state, "opencode-claude", &headers) {
         Some(p) => p,
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers",
             "[OmniGate] OpenCode Claude 分组未配置任何可用的供应商。请在 OmniGate → 客户端配置 → OpenCode → Claude 协议中添加并启用供应商。").into_response()),
@@ -513,7 +537,7 @@ pub async fn handle_opencode_resp(
     } else { "unknown".to_string() };
 
     let req_path = path.clone();
-    let plan = match state.balancer.get_routing_plan("opencode-resp") {
+    let plan = match get_effective_plan(&state, "opencode-resp", &headers) {
         Some(p) => p,
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers",
             "[OmniGate] OpenCode Responses 分组未配置任何可用的供应商。请在 OmniGate → 客户端配置 → OpenCode → Responses 协议中添加并启用供应商。").into_response()),
@@ -675,7 +699,7 @@ pub async fn handle_opencode_chat(
     } else { "unknown".to_string() };
 
     let req_path = path.clone();
-    let plan = match state.balancer.get_routing_plan("opencode-chat") {
+    let plan = match get_effective_plan(&state, "opencode-chat", &headers) {
         Some(p) => p,
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers",
             "[OmniGate] OpenCode Chat 分组未配置任何可用的供应商。请在 OmniGate → 客户端配置 → OpenCode → Chat 协议中添加并启用供应商。").into_response()),
@@ -828,7 +852,7 @@ pub async fn handle_codex_proxy(
     };
 
     let req_path = path.clone();
-    let plan = match state.balancer.get_routing_plan("codex") {
+    let plan = match get_effective_plan(&state, "codex", &headers) {
         Some(p) => p,
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),
     };

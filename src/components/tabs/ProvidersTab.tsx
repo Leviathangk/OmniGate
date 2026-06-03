@@ -67,7 +67,12 @@ export function ProvidersTab({
           <tbody>
             {providers.length === 0 ? (
               <tr><td colSpan={6} style={{ textAlign: "center", padding: "32px", color: "var(--text-muted)", fontSize: "0.82rem" }}>暂无供应商 — 点击右上角 + 按钮添加</td></tr>
-            ) : providers.map(p => (
+            ) : [...providers].sort((a, b) => {
+              if (a.is_active !== b.is_active) {
+                return a.is_active ? -1 : 1;
+              }
+              return a.name.localeCompare(b.name);
+            }).map(p => (
               <tr key={p.id}>
                 <td style={{ fontWeight: "600" }}>{p.name}</td>
                 <td><code style={{ fontSize: "0.76rem" }}>{p.api_url}</code></td>
