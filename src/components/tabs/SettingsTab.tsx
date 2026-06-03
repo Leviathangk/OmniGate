@@ -88,7 +88,7 @@ export function SettingsTab({
 
 
 
-          <div style={{ marginTop: "32px" }}>
+          <div className="panel-card" style={{ marginTop: "16px" }}>
             <div className="card-header-row" style={{ marginBottom: "10px" }}>
               <div>
                 <h5 style={{ fontSize: "0.95rem", fontWeight: "600" }}>200 状态伪装错误匹配词</h5>
