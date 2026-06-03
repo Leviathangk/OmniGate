@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/OmniGate-v0.1.8-blueviolet?style=for-the-badge&logo=appveyor" alt="Version" />
+  <img src="https://img.shields.io/badge/OmniGate-v0.1.9-blueviolet?style=for-the-badge&logo=appveyor" alt="Version" />
   <img src="https://img.shields.io/badge/Language-Rust%20%7C%20TypeScript-orange?style=for-the-badge" alt="Languages" />
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey?style=for-the-badge&logo=apple" alt="Platforms" />
 </p>
@@ -20,7 +20,7 @@
 
 ---
 
-## 📢 最新更新 (v0.1.8)
+## 📢 最新更新 (v0.1.9)
 
 * **纯净真实的路由探针**：重构了生效供应商状态（小绿点）的显示逻辑，摒弃了轮询与盲目拉取。现在只有当底层代理引擎真实地向某个供应商发起请求时，界面才会瞬间点亮对应节点，实现了 100% “所见即真实”的流量监控。
 * **快捷移除绑定**：在客户端映射列表中新增“操作”列，现在可以通过点击垃圾桶图标，快速、安全地将某个供应商从当前协议的接管列表中移除，而不影响全局配置。

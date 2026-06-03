@@ -774,8 +774,6 @@ function App() {
   const [globalMaxRetries, setGlobalMaxRetries] = useState<number>(2);
   const [globalMaxRetryTimeout, setGlobalMaxRetryTimeout] = useState<number | "">(120);
   const [globalRequestTimeout, setGlobalRequestTimeout] = useState<number>(120);
-  const [globalResetEnabled, setGlobalResetEnabled] = useState<boolean>(false);
-  const [globalResetTime, setGlobalResetTime] = useState<string>("00:00");
   const [fake200Keywords, setFake200Keywords] = useState<Fake200Keyword[]>([]);
   const [activeProviders, setActiveProviders] = useState<Record<string, string>>({});
   const globalSettingsReadyRef = useRef(false);
@@ -994,12 +992,10 @@ function App() {
         invoke<string>("get_global_setting", { key: "max_retries", defaultVal: "2" }),
         invoke<string>("get_global_setting", { key: "max_retry_timeout", defaultVal: "120" }),
         invoke<string>("get_global_setting", { key: "request_timeout", defaultVal: "120" }),
-        invoke<string>("get_global_setting", { key: "global_reset_enabled", defaultVal: "false" }),
-        invoke<string>("get_global_setting", { key: "global_reset_time", defaultVal: "00:00" }),
         invoke<string>("get_global_setting", { key: "fake_200_keywords", defaultVal: "[]" })
       ]);
 
-      const [overview, provList, loadedClientConfigs, traffic, recent, dist, heatmap, maxRetriesStr, maxRetryTimeoutStr, requestTimeoutStr, globalResetEnabledStr, globalResetTimeStr, fake200KeywordsStr] = results;
+      const [overview, provList, loadedClientConfigs, traffic, recent, dist, heatmap, maxRetriesStr, maxRetryTimeoutStr, requestTimeoutStr, fake200KeywordsStr] = results;
       setTrafficTrend(traffic);
       setRecentActivities(recent);
       setModelUsage(dist);
@@ -1010,8 +1006,6 @@ function App() {
       setGlobalMaxRetries(parseInt(maxRetriesStr as string || "2"));
       setGlobalMaxRetryTimeout(parseInt(maxRetryTimeoutStr as string || "120"));
       setGlobalRequestTimeout(parseInt(requestTimeoutStr as string || "120"));
-      setGlobalResetEnabled(globalResetEnabledStr === "true");
-      setGlobalResetTime(globalResetTimeStr);
       try {
         const parsed = JSON.parse(fake200KeywordsStr as string || "[]");
         // Backwards compatibility with old string array
@@ -1138,11 +1132,9 @@ function App() {
       invoke("set_global_setting", { key: "max_retries", value: globalMaxRetries.toString() }).catch(console.error);
       invoke("set_global_setting", { key: "max_retry_timeout", value: (globalMaxRetryTimeout || 120).toString() }).catch(console.error);
       invoke("set_global_setting", { key: "request_timeout", value: globalRequestTimeout.toString() }).catch(console.error);
-      invoke("set_global_setting", { key: "global_reset_enabled", value: globalResetEnabled ? "true" : "false" }).catch(console.error);
-      invoke("set_global_setting", { key: "global_reset_time", value: globalResetTime }).catch(console.error);
       invoke("set_global_setting", { key: "fake_200_keywords", value: JSON.stringify(fake200Keywords) }).catch(console.error);
     }
-  }, [globalMaxRetries, globalMaxRetryTimeout, globalRequestTimeout, globalResetEnabled, globalResetTime, fake200Keywords]);
+  }, [globalMaxRetries, globalMaxRetryTimeout, globalRequestTimeout, fake200Keywords]);
 
   // ============================================================================
   // 事件处理逻辑
@@ -2291,10 +2283,6 @@ function App() {
               setGlobalMaxRetries={setGlobalMaxRetries}
               globalMaxRetryTimeout={globalMaxRetryTimeout}
               setGlobalMaxRetryTimeout={setGlobalMaxRetryTimeout}
-              globalResetEnabled={globalResetEnabled}
-              setGlobalResetEnabled={setGlobalResetEnabled}
-              globalResetTime={globalResetTime}
-              setGlobalResetTime={setGlobalResetTime}
               fake200Keywords={fake200Keywords}
               setFake200Keywords={setFake200Keywords}
             />

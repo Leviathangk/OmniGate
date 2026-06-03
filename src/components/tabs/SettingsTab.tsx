@@ -14,10 +14,6 @@ interface SettingsTabProps {
   setGlobalMaxRetries: (val: number) => void;
   globalMaxRetryTimeout: number | "";
   setGlobalMaxRetryTimeout: (val: number | "") => void;
-  globalResetEnabled: boolean;
-  setGlobalResetEnabled: (val: boolean) => void;
-  globalResetTime: string;
-  setGlobalResetTime: (val: string) => void;
   fake200Keywords: import("../../App").Fake200Keyword[];
   setFake200Keywords: (val: import("../../App").Fake200Keyword[]) => void;
 }
@@ -34,10 +30,6 @@ export function SettingsTab({
   setGlobalMaxRetries,
   globalMaxRetryTimeout,
   setGlobalMaxRetryTimeout,
-  globalResetEnabled,
-  setGlobalResetEnabled,
-  globalResetTime,
-  setGlobalResetTime,
   fake200Keywords,
   setFake200Keywords
 }: SettingsTabProps) {
@@ -94,34 +86,7 @@ export function SettingsTab({
           </div>
 
 
-          <div className="panel-card" style={{ marginTop: "16px" }}>
-            <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "8px" }}>优先级重置调度</h3>
-            <p style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: "20px" }}>您可以开启全局统一定时重置优先级，或依赖于每个供应商独立配置的计费周期进行惩罚衰减。</p>
 
-            <div className="form-group" style={{ marginBottom: "16px" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontWeight: "normal" }}>
-                <input 
-                  type="checkbox" 
-                  checked={globalResetEnabled} 
-                  onChange={e => setGlobalResetEnabled(e.target.checked)} 
-                  style={{ width: "16px", height: "16px", accentColor: "hsl(var(--primary))" }}
-                />
-                <span style={{ fontWeight: 600 }}>开启全局定时重置 (覆盖所有供应商)</span>
-              </label>
-            </div>
-
-            {globalResetEnabled && (
-              <div className="form-group" style={{ marginBottom: "24px", maxWidth: "200px" }}>
-                <label>全局统一重置时间 (HH:MM)</label>
-                <input 
-                  type="time" 
-                  className="modal-input" 
-                  value={globalResetTime} 
-                  onChange={e => setGlobalResetTime(e.target.value)} 
-                />
-              </div>
-            )}
-          </div>
 
           <div style={{ marginTop: "32px" }}>
             <div className="card-header-row" style={{ marginBottom: "10px" }}>

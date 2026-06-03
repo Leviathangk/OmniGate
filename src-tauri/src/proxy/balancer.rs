@@ -97,9 +97,6 @@ impl Balancer {
             return None;
         }
 
-        let global_reset_enabled = self.db.get_global_setting("global_reset_enabled", "false") == "true";
-        let global_reset_time = self.db.get_global_setting("global_reset_time", "00:00");
-
         // Helper function for reset timestamp
         let get_recent_reset_timestamp = |time_str: &str| -> i64 {
             let now = Local::now();
@@ -122,17 +119,12 @@ impl Balancer {
         // --- 惰性评估时间并清空过期惩罚 ---
         if let Ok(mut write_map) = self.penalties.write() {
             let now_ts = Utc::now().timestamp();
-            let global_reset_ts = if global_reset_enabled { get_recent_reset_timestamp(&global_reset_time) } else { 0 };
 
             for p in &attached_providers {
                 if let Some(penalty) = write_map.get(&p.id) {
                     let mut should_reset = false;
                     
-                    if global_reset_enabled {
-                        if penalty.last_penalty_time < global_reset_ts {
-                            should_reset = true;
-                        }
-                    } else if p.billing_type == "subscription" {
+                    if p.billing_type == "subscription" {
                         let reset_time_str = p.reset_time.as_deref().unwrap_or("00:00");
                         let reset_ts = get_recent_reset_timestamp(reset_time_str);
                         if penalty.last_penalty_time < reset_ts {
