@@ -659,7 +659,10 @@ export const renderModelPullingInterface = (
 };
 
 
-// CustomTrafficTooltip removed
+export interface Fake200Keyword {
+  word: string;
+  matchType: 'contains' | 'exact';
+}
 
 function App() {
   // ============================================================================
@@ -773,6 +776,7 @@ function App() {
   const [globalRequestTimeout, setGlobalRequestTimeout] = useState<number>(120);
   const [globalResetEnabled, setGlobalResetEnabled] = useState<boolean>(false);
   const [globalResetTime, setGlobalResetTime] = useState<string>("00:00");
+  const [fake200Keywords, setFake200Keywords] = useState<Fake200Keyword[]>([]);
   const [activeProviders, setActiveProviders] = useState<Record<string, string>>({});
   const globalSettingsReadyRef = useRef(false);
 
@@ -979,10 +983,9 @@ function App() {
   // 加载核心数据（从真实 SQLite 后端）
   const loadData = async () => {
     try {
-      const [overview, provList, loadedClientConfigs, traffic, recent, dist, heatmap, maxRetriesStr, maxRetryTimeoutStr, requestTimeoutStr, globalResetEnabledStr, globalResetTimeStr] = await Promise.all([
+      const results = await Promise.all([
         invoke<UsageOverview>("get_usage_overview"),
         invoke<Provider[]>("get_providers"),
-
         invoke<ClientConfig[]>("get_client_configs"),
         invoke<TrafficPoint[]>("get_today_traffic_trend"),
         invoke<RecentActivity[]>("get_recent_activities", { limit: 10 }),
@@ -992,8 +995,11 @@ function App() {
         invoke<string>("get_global_setting", { key: "max_retry_timeout", defaultVal: "120" }),
         invoke<string>("get_global_setting", { key: "request_timeout", defaultVal: "120" }),
         invoke<string>("get_global_setting", { key: "global_reset_enabled", defaultVal: "false" }),
-        invoke<string>("get_global_setting", { key: "global_reset_time", defaultVal: "00:00" })
+        invoke<string>("get_global_setting", { key: "global_reset_time", defaultVal: "00:00" }),
+        invoke<string>("get_global_setting", { key: "fake_200_keywords", defaultVal: "[]" })
       ]);
+
+      const [overview, provList, loadedClientConfigs, traffic, recent, dist, heatmap, maxRetriesStr, maxRetryTimeoutStr, requestTimeoutStr, globalResetEnabledStr, globalResetTimeStr, fake200KeywordsStr] = results;
       setTrafficTrend(traffic);
       setRecentActivities(recent);
       setModelUsage(dist);
@@ -1006,6 +1012,17 @@ function App() {
       setGlobalRequestTimeout(parseInt(requestTimeoutStr as string || "120"));
       setGlobalResetEnabled(globalResetEnabledStr === "true");
       setGlobalResetTime(globalResetTimeStr);
+      try {
+        const parsed = JSON.parse(fake200KeywordsStr as string || "[]");
+        // Backwards compatibility with old string array
+        if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string') {
+          setFake200Keywords(parsed.map((p: string) => ({ word: p, matchType: 'contains' })));
+        } else {
+          setFake200Keywords(parsed);
+        }
+      } catch (e) {
+        setFake200Keywords([]);
+      }
       globalSettingsReadyRef.current = true;
 
       let targetConfigs = loadedClientConfigs;
@@ -1123,8 +1140,9 @@ function App() {
       invoke("set_global_setting", { key: "request_timeout", value: globalRequestTimeout.toString() }).catch(console.error);
       invoke("set_global_setting", { key: "global_reset_enabled", value: globalResetEnabled ? "true" : "false" }).catch(console.error);
       invoke("set_global_setting", { key: "global_reset_time", value: globalResetTime }).catch(console.error);
+      invoke("set_global_setting", { key: "fake_200_keywords", value: JSON.stringify(fake200Keywords) }).catch(console.error);
     }
-  }, [globalMaxRetries, globalMaxRetryTimeout, globalRequestTimeout, globalResetEnabled, globalResetTime]);
+  }, [globalMaxRetries, globalMaxRetryTimeout, globalRequestTimeout, globalResetEnabled, globalResetTime, fake200Keywords]);
 
   // ============================================================================
   // 事件处理逻辑
@@ -2277,6 +2295,8 @@ function App() {
               setGlobalResetEnabled={setGlobalResetEnabled}
               globalResetTime={globalResetTime}
               setGlobalResetTime={setGlobalResetTime}
+              fake200Keywords={fake200Keywords}
+              setFake200Keywords={setFake200Keywords}
             />
           )}
 

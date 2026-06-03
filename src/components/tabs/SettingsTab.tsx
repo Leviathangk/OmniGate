@@ -1,5 +1,5 @@
 
-import { Database, Info, Trash2 } from "lucide-react";
+import { Database, Info, Trash2, Plus } from "lucide-react";
 import { CustomSelect } from "../../App";
 
 interface SettingsTabProps {
@@ -18,6 +18,8 @@ interface SettingsTabProps {
   setGlobalResetEnabled: (val: boolean) => void;
   globalResetTime: string;
   setGlobalResetTime: (val: string) => void;
+  fake200Keywords: import("../../App").Fake200Keyword[];
+  setFake200Keywords: (val: import("../../App").Fake200Keyword[]) => void;
 }
 
 export function SettingsTab({
@@ -35,7 +37,9 @@ export function SettingsTab({
   globalResetEnabled,
   setGlobalResetEnabled,
   globalResetTime,
-  setGlobalResetTime
+  setGlobalResetTime,
+  fake200Keywords,
+  setFake200Keywords
 }: SettingsTabProps) {
   return (
     <div>
@@ -89,6 +93,7 @@ export function SettingsTab({
             </div>
           </div>
 
+
           <div className="panel-card" style={{ marginTop: "16px" }}>
             <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "8px" }}>优先级重置调度</h3>
             <p style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: "20px" }}>您可以开启全局统一定时重置优先级，或依赖于每个供应商独立配置的计费周期进行惩罚衰减。</p>
@@ -116,6 +121,104 @@ export function SettingsTab({
                 />
               </div>
             )}
+          </div>
+
+          <div style={{ marginTop: "32px" }}>
+            <div className="card-header-row" style={{ marginBottom: "10px" }}>
+              <div>
+                <h5 style={{ fontSize: "0.95rem", fontWeight: "600" }}>200 状态伪装错误匹配词</h5>
+                <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "6px" }}>
+                  有些服务商在拦截请求时仍会返回 200 HTTP 状态码，您可以配置匹配词，只要返回的响应流第一片段命中以下匹配规则，即自动拦截并立刻切换备用节点。
+                </div>
+              </div>
+              <button className="btn-secondary" style={{ padding: "6px 12px", fontSize: "0.75rem" }} onClick={() => {
+                if (fake200Keywords.some(kw => kw.word.trim() === "")) return;
+                setFake200Keywords([...fake200Keywords, { word: "", matchType: "contains" }]);
+              }}><Plus size={14} /> 新增匹配项</button>
+            </div>
+            
+            <div className="responsive-table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "30%" }}>匹配模式</th>
+                    <th style={{ width: "60%" }}>匹配词汇</th>
+                    <th style={{ width: "10%", textAlign: "center" }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fake200Keywords.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} style={{ textAlign: "center", padding: "20px", color: "var(--text-muted)" }}>暂无配置匹配词</td>
+                    </tr>
+                  ) : (
+                    fake200Keywords.map((kw, i) => (
+                      <tr key={i}>
+                        <td>
+                          <CustomSelect 
+                            value={kw.matchType}
+                            options={[
+                              { value: "contains", label: "包含 (Contains)" },
+                              { value: "exact", label: "完全一致 (Exact)" }
+                            ]}
+                            onChange={(val) => {
+                              const newKws = [...fake200Keywords];
+                              newKws[i].matchType = val as 'contains' | 'exact';
+                              setFake200Keywords(newKws);
+                            }}
+                            style={{ 
+                              background: "rgba(0, 0, 0, 0.2)", 
+                              border: "1px solid var(--border-color)", 
+                              color: "var(--text-color)" 
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input 
+                            type="text" 
+                            style={{ 
+                              margin: 0, 
+                              padding: "6px 10px", 
+                              fontSize: "0.85rem", 
+                              height: "auto", 
+                              width: "100%", 
+                              background: "rgba(0, 0, 0, 0.2)",
+                              border: "1px solid var(--border-color)",
+                              borderRadius: "4px",
+                              color: "var(--text-color)",
+                              outline: "none"
+                            }}
+                            value={kw.word}
+                            onChange={(e) => {
+                              const newKws = [...fake200Keywords];
+                              newKws[i].word = e.target.value;
+                              setFake200Keywords(newKws);
+                            }}
+                            placeholder="例如: tream disconnected"
+                          />
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <div style={{ display: "flex", justifyContent: "center" }}>
+                            <button 
+                              className="icon-btn" 
+                              title="删除"
+                              onClick={() => {
+                                const newKws = [...fake200Keywords];
+                                newKws.splice(i, 1);
+                                setFake200Keywords(newKws);
+                              }}
+                              style={{ color: "hsl(var(--danger))", opacity: 0.8 }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

@@ -11,6 +11,28 @@ use std::time::Duration;
 use std::time::Instant;
 use tauri::Emitter;
 
+#[derive(serde::Deserialize)]
+struct Fake200Keyword {
+    word: String,
+    #[serde(rename = "matchType")]
+    match_type: String,
+}
+
+pub fn is_fake_200_error(text: &str, db: &crate::database::DbManager) -> bool {
+    let keywords_json = db.get_global_setting("fake_200_keywords", "[]");
+    if let Ok(keywords) = serde_json::from_str::<Vec<Fake200Keyword>>(&keywords_json) {
+        for kw in keywords {
+            if kw.word.trim().is_empty() { continue; }
+            if kw.match_type == "exact" && text.trim() == kw.word.trim() {
+                return true;
+            } else if kw.match_type == "contains" && text.contains(&kw.word) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn record_usage(
     state: &Arc<AppState>,
     provider_id: &str,
@@ -221,6 +243,35 @@ pub async fn handle_claude_messages(
                         continue; // 重试同一供应商
                     }
 
+                    if status.is_client_error() {
+                        // 4xx 客户端/权限错误 (如 400, 401, 403, 404 等)：不重试当前供应商，直接切下一个
+                        let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
+                        last_error = format!("HTTP {status} - {body_text}");
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
+                        break; // 放弃当前供应商，进入下一个供应商
+                    }
+
+                    let mut res = res;
+                    let first_chunk = match res.chunk().await {
+                        Ok(Some(chunk)) => chunk,
+                        Ok(None) => axum::body::Bytes::new(),
+                        Err(e) => {
+                            last_error = format!("读取上游流失败: {e}");
+                            let latency = start_time.elapsed().as_millis() as u32;
+                            record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, 502, latency, Some(last_error.clone()));
+                            continue; // 重试同一供应商
+                        }
+                    };
+
+                    let first_chunk_str = String::from_utf8_lossy(&first_chunk);
+                    if crate::proxy::handlers::is_fake_200_error(&first_chunk_str, &state.db) {
+                        last_error = format!("伪装错误(被风控/断连): {}", first_chunk_str.chars().take(200).collect::<String>());
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, 502, latency, Some(last_error.clone()));
+                        break; // 放弃当前供应商，进入下一个供应商
+                    }
+
                     // 成功：直接透传流式响应
                     let mut response_builder = Response::builder().status(status);
                     for (k, v) in res.headers().iter() {
@@ -232,8 +283,14 @@ pub async fn handle_claude_messages(
                     let latency = start_time.elapsed().as_millis() as u32;
                     state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, status.as_u16(), latency, None);
-                    let stream = res.bytes_stream().map_err(std::io::Error::other);
-                    let body = Body::from_stream(stream);
+                    
+                    let rest_stream = res.bytes_stream().map_err(std::io::Error::other);
+                    use futures_util::StreamExt;
+                    let first_chunk_stream = futures_util::stream::once(async move { 
+                        Ok::<_, std::io::Error>(first_chunk) 
+                    });
+                    let combined_stream = first_chunk_stream.chain(rest_stream);
+                    let body = Body::from_stream(combined_stream);
                     return Ok(response_builder.body(body).unwrap());
                 }
                 Ok(Err(e)) => {
@@ -366,6 +423,35 @@ pub async fn handle_opencode_claude(
                         record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
                         continue;
                     }
+
+                    if status.is_client_error() {
+                        let body_text = res.text().await.unwrap_or_default();
+                        last_error = format!("HTTP {status} - {body_text}");
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
+                        break;
+                    }
+
+                    let mut res = res;
+                    let first_chunk = match res.chunk().await {
+                        Ok(Some(chunk)) => chunk,
+                        Ok(None) => axum::body::Bytes::new(),
+                        Err(e) => {
+                            last_error = format!("读取上游流失败: {e}");
+                            let latency = start_time.elapsed().as_millis() as u32;
+                            record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
+                            continue;
+                        }
+                    };
+
+                    let first_chunk_str = String::from_utf8_lossy(&first_chunk);
+                    if crate::proxy::handlers::is_fake_200_error(&first_chunk_str, &state.db) {
+                        last_error = format!("伪装错误(被风控/断连): {}", first_chunk_str.chars().take(200).collect::<String>());
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
+                        break;
+                    }
+
                     let mut rb = Response::builder().status(status);
                     for (k, v) in res.headers().iter() {
                         let ks = k.as_str().to_lowercase();
@@ -376,8 +462,11 @@ pub async fn handle_opencode_claude(
                     let latency = start_time.elapsed().as_millis() as u32;
                     state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
-                    let stream = res.bytes_stream().map_err(std::io::Error::other);
-                    return Ok(rb.body(Body::from_stream(stream)).unwrap());
+                    
+                    let rest_stream = res.bytes_stream().map_err(std::io::Error::other);
+                    use futures_util::StreamExt;
+                    let combined_stream = futures_util::stream::once(async move { Ok::<_, std::io::Error>(first_chunk) }).chain(rest_stream);
+                    return Ok(rb.body(Body::from_stream(combined_stream)).unwrap());
                 }
                 Ok(Err(e)) => {
                     last_error = format!("Reqwest error: {e}");
@@ -496,6 +585,35 @@ pub async fn handle_opencode_resp(
                         record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
                         continue;
                     }
+
+                    if status.is_client_error() {
+                        let body_text = res.text().await.unwrap_or_default();
+                        last_error = format!("HTTP {status} - {body_text}");
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
+                        break;
+                    }
+
+                    let mut res = res;
+                    let first_chunk = match res.chunk().await {
+                        Ok(Some(chunk)) => chunk,
+                        Ok(None) => axum::body::Bytes::new(),
+                        Err(e) => {
+                            last_error = format!("读取上游流失败: {e}");
+                            let latency = start_time.elapsed().as_millis() as u32;
+                            record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
+                            continue;
+                        }
+                    };
+
+                    let first_chunk_str = String::from_utf8_lossy(&first_chunk);
+                    if crate::proxy::handlers::is_fake_200_error(&first_chunk_str, &state.db) {
+                        last_error = format!("伪装错误(被风控/断连): {}", first_chunk_str.chars().take(200).collect::<String>());
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
+                        break;
+                    }
+
                     let mut rb = Response::builder().status(status);
                     for (k, v) in res.headers().iter() {
                         let ks = k.as_str().to_lowercase();
@@ -506,8 +624,11 @@ pub async fn handle_opencode_resp(
                     let latency = start_time.elapsed().as_millis() as u32;
                     state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
-                    let stream = res.bytes_stream().map_err(std::io::Error::other);
-                    return Ok(rb.body(Body::from_stream(stream)).unwrap());
+                    
+                    let rest_stream = res.bytes_stream().map_err(std::io::Error::other);
+                    use futures_util::StreamExt;
+                    let combined_stream = futures_util::stream::once(async move { Ok::<_, std::io::Error>(first_chunk) }).chain(rest_stream);
+                    return Ok(rb.body(Body::from_stream(combined_stream)).unwrap());
                 }
                 Ok(Err(e)) => {
                     last_error = format!("Reqwest error: {e}");
@@ -618,6 +739,35 @@ pub async fn handle_opencode_chat(
                         record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
                         continue;
                     }
+
+                    if status.is_client_error() {
+                        let body_text = res.text().await.unwrap_or_default();
+                        last_error = format!("HTTP {status} - {body_text}");
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
+                        break;
+                    }
+
+                    let mut res = res;
+                    let first_chunk = match res.chunk().await {
+                        Ok(Some(chunk)) => chunk,
+                        Ok(None) => axum::body::Bytes::new(),
+                        Err(e) => {
+                            last_error = format!("读取上游流失败: {e}");
+                            let latency = start_time.elapsed().as_millis() as u32;
+                            record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
+                            continue;
+                        }
+                    };
+
+                    let first_chunk_str = String::from_utf8_lossy(&first_chunk);
+                    if crate::proxy::handlers::is_fake_200_error(&first_chunk_str, &state.db) {
+                        last_error = format!("伪装错误(被风控/断连): {}", first_chunk_str.chars().take(200).collect::<String>());
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
+                        break;
+                    }
+
                     let mut rb = Response::builder().status(status);
                     for (k, v) in res.headers().iter() {
                         let ks = k.as_str().to_lowercase();
@@ -628,8 +778,11 @@ pub async fn handle_opencode_chat(
                     let latency = start_time.elapsed().as_millis() as u32;
                     state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
-                    let stream = res.bytes_stream().map_err(std::io::Error::other);
-                    return Ok(rb.body(Body::from_stream(stream)).unwrap());
+                    
+                    let rest_stream = res.bytes_stream().map_err(std::io::Error::other);
+                    use futures_util::StreamExt;
+                    let combined_stream = futures_util::stream::once(async move { Ok::<_, std::io::Error>(first_chunk) }).chain(rest_stream);
+                    return Ok(rb.body(Body::from_stream(combined_stream)).unwrap());
                 }
                 Ok(Err(e)) => {
                     last_error = format!("Reqwest error: {e}");
@@ -771,6 +924,34 @@ pub async fn handle_codex_proxy(
                         continue; // 重试同一供应商
                     }
 
+                    if status.is_client_error() {
+                        let body_text = res.text().await.unwrap_or_else(|_| "无法读取上游错误体".to_string());
+                        last_error = format!("HTTP {status} - {body_text}");
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, Some(last_error.clone()));
+                        break;
+                    }
+
+                    let mut res = res;
+                    let first_chunk = match res.chunk().await {
+                        Ok(Some(chunk)) => chunk,
+                        Ok(None) => axum::body::Bytes::new(),
+                        Err(e) => {
+                            last_error = format!("读取上游流失败: {e}");
+                            let latency = start_time.elapsed().as_millis() as u32;
+                            record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
+                            continue;
+                        }
+                    };
+
+                    let first_chunk_str = String::from_utf8_lossy(&first_chunk);
+                    if crate::proxy::handlers::is_fake_200_error(&first_chunk_str, &state.db) {
+                        last_error = format!("伪装错误(被风控/断连): {}", first_chunk_str.chars().take(200).collect::<String>());
+                        let latency = start_time.elapsed().as_millis() as u32;
+                        record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
+                        break;
+                    }
+
                     // 成功：直接透传流式响应
                     let mut response_builder = Response::builder().status(status);
                     for (k, v) in res.headers().iter() {
@@ -782,9 +963,11 @@ pub async fn handle_codex_proxy(
                     let latency = start_time.elapsed().as_millis() as u32;
                     state.balancer.record_success(&provider.id);
                     record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, status.as_u16(), latency, None);
-                    let stream = res.bytes_stream().map_err(std::io::Error::other);
-                    let body = Body::from_stream(stream);
-                    return Ok(response_builder.body(body).unwrap());
+                    
+                    let rest_stream = res.bytes_stream().map_err(std::io::Error::other);
+                    use futures_util::StreamExt;
+                    let combined_stream = futures_util::stream::once(async move { Ok::<_, std::io::Error>(first_chunk) }).chain(rest_stream);
+                    return Ok(response_builder.body(Body::from_stream(combined_stream)).unwrap());
                 }
                 Ok(Err(e)) => {
                     last_error = format!("Reqwest error: {e}");

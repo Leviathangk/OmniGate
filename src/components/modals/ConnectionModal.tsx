@@ -126,8 +126,14 @@ export function ConnectionModal({
                 <input 
                   type="number" 
                   min="1" max="720" 
-                  value={editConnectionData.reset_time || "1"} 
-                  onChange={(e) => setEditConnectionData({ ...editConnectionData, reset_time: e.target.value })} 
+                  value={editConnectionData.reset_time ?? "1"} 
+                  onChange={(e) => setEditConnectionData({ ...editConnectionData, reset_time: e.target.value })}
+                  onBlur={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (isNaN(val) || val < 1) {
+                      setEditConnectionData({ ...editConnectionData, reset_time: "1" });
+                    }
+                  }}
                 />
               </div>
             )}

@@ -150,7 +150,18 @@ export function AddProviderModal({
                   {newProvBillingType === "pay_as_you_go" && (
                     <div className="form-group" style={{ flex: 1 }}>
                       <label>重置周期 (小时)</label>
-                      <input type="number" min="1" max="720" value={newProvResetTime} onChange={(e) => setNewProvResetTime(e.target.value)} />
+                      <input 
+                        type="number" 
+                        min="1" max="720" 
+                        value={newProvResetTime} 
+                        onChange={(e) => setNewProvResetTime(e.target.value)}
+                        onBlur={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (isNaN(val) || val < 1) {
+                            setNewProvResetTime("1");
+                          }
+                        }}
+                      />
                     </div>
                   )}
                 </div>
