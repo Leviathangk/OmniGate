@@ -161,8 +161,19 @@ impl DbManager {
     pub fn get_today_metrics(&self) -> Result<(usize, String, String, String), String> {
         let conn = self.conn.lock().unwrap();
         
-        let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
-        let yesterday_start = today_start - 86400;
+        let today_date = chrono::Local::now().date_naive();
+        let today_start = today_date.and_hms_opt(0, 0, 0).unwrap()
+            .and_local_timezone(chrono::Local)
+            .earliest() // Safe fallback for DST edge cases
+            .unwrap_or_else(|| chrono::Local::now())
+            .timestamp();
+            
+        let yesterday_date = today_date - chrono::Duration::try_days(1).unwrap();
+        let yesterday_start = yesterday_date.and_hms_opt(0, 0, 0).unwrap()
+            .and_local_timezone(chrono::Local)
+            .earliest()
+            .unwrap_or_else(|| chrono::Local::now() - chrono::Duration::try_days(1).unwrap())
+            .timestamp();
 
         // Today stats
         let mut today_count: i64 = 0;
@@ -212,7 +223,11 @@ impl DbManager {
     pub fn get_today_traffic_trend(&self) -> Result<Vec<TrafficPoint>, String> {
         let conn = self.conn.lock().unwrap();
         // Today from 00:00 to 23:59
-        let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+        let today_start = chrono::Local::now().date_naive().and_hms_opt(0, 0, 0).unwrap()
+            .and_local_timezone(chrono::Local)
+            .earliest()
+            .unwrap_or_else(|| chrono::Local::now())
+            .timestamp();
         
         let mut stmt = conn.prepare(
             "SELECT strftime('%H:00', datetime(created_at, 'unixepoch', 'localtime')) as hour, 

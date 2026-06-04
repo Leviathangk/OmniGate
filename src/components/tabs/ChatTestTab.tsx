@@ -269,8 +269,15 @@ export function ChatTestTab({ providers }: ChatTestTabProps) {
         </div>
       )}
 
-      <div className="panel-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div className="panel-card" style={{ 
+        flex: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        overflow: 'hidden',
+        padding: 0,
+        marginBottom: 0
+      }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {chatHistory.length === 0 ? (
             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexDirection: 'column', gap: '12px' }}>
               <Bot size={48} opacity={0.2} />
@@ -313,7 +320,7 @@ export function ChatTestTab({ providers }: ChatTestTabProps) {
           <div ref={messagesEndRef} />
         </div>
 
-        <div style={{ padding: '0 20px 24px 20px' }}>
+        <div style={{ padding: '0 24px 24px 24px' }}>
           <div style={{ 
             position: 'relative', 
             backgroundColor: 'hsl(var(--bg-app))', 

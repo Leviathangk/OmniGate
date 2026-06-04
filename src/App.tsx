@@ -2034,6 +2034,7 @@ function App() {
             <h2>
               {activeTab === "overview" && "系统运行概览"}
               {activeTab === "providers" && "供应商管理"}
+              {activeTab === "chat_test" && "在线对话测试"}
               {activeTab === "client_config" && "本地客户端配置接管"}
               {activeTab === "global_prompts" && "一站式原生全局提示词管理"}
               {activeTab === "stats" && "审计分析统计"}
@@ -2042,6 +2043,7 @@ function App() {
             <p>
               {activeTab === "overview" && "一站式管理 AI 供应商、模型与使用情况"}
               {activeTab === "providers" && "配置与接管各大 AI 节点通道协议"}
+              {activeTab === "chat_test" && "实时连通性测试及协议模拟响应"}
               {activeTab === "models" && "跨账户管理大模型激活列表及自动发现"}
               {activeTab === "client_config" && "自定义 AI 开发工具轮换策略及负载权重"}
               {activeTab === "global_prompts" && "直接管控散落于系统各处的 CLI 原生系统人设"}
