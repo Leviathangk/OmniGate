@@ -265,7 +265,9 @@ pub fn run() {
             commands::write_external_prompt,
             commands::update_tray_menu_state,
             commands::get_global_setting,
-            commands::set_global_setting
+            commands::set_global_setting,
+            commands::read_client_raw_config,
+            commands::write_client_raw_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

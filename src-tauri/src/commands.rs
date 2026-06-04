@@ -919,6 +919,47 @@ pub fn write_external_prompt(client_id: String, content: String, app_handle: tau
     std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {e}"))
 }
 
+#[tauri::command]
+pub fn read_client_raw_config(client_id: String, app_handle: tauri::AppHandle) -> Result<String, String> {
+    let path = match client_id.as_str() {
+        "claude" => get_claude_config_dir(&app_handle)?.join("settings.json"),
+        "codex" => get_codex_dir(&app_handle)?.join("config.toml"),
+        "opencode" => get_opencode_config_dir(&app_handle)?.join("opencode.json"),
+        _ => return Err("未知的客户端标识".to_string()),
+    };
+    
+    if path.exists() {
+        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))
+    } else {
+        Ok("".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn write_client_raw_config(client_id: String, content: String, app_handle: tauri::AppHandle) -> Result<(), String> {
+    let (dir, path) = match client_id.as_str() {
+        "claude" => {
+            let d = get_claude_config_dir(&app_handle)?;
+            (d.clone(), d.join("settings.json"))
+        },
+        "codex" => {
+            let d = get_codex_dir(&app_handle)?;
+            (d.clone(), d.join("config.toml"))
+        },
+        "opencode" => {
+            let d = get_opencode_config_dir(&app_handle)?;
+            (d.clone(), d.join("opencode.json"))
+        },
+        _ => return Err("未知的客户端标识".to_string()),
+    };
+    
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create directory: {e}"))?;
+    }
+    
+    std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {e}"))
+}
+
 // ============================================================================
 // Direct Config Mode Injection
 // ============================================================================

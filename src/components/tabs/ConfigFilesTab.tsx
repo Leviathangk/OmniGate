@@ -2,21 +2,21 @@ import React, { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Save, AlertTriangle, X } from "lucide-react";
 
-interface GlobalPromptsTabProps {
+interface ConfigFilesTabProps {
   cliStatus: Record<string, boolean>;
   showToast: (msg: string, type: "success" | "error" | "warning" | "info") => void;
   setTabDirty: (dirty: boolean) => void;
   registerSaveHandler?: (saveFn: () => Promise<boolean>) => void;
 }
 
-export const GlobalPromptsTab: React.FC<GlobalPromptsTabProps> = ({ cliStatus, showToast, setTabDirty, registerSaveHandler }) => {
+export const ConfigFilesTab: React.FC<ConfigFilesTabProps> = ({ cliStatus, showToast, setTabDirty, registerSaveHandler }) => {
   const [activeSubTab, setActiveSubTab] = useState<string>("claude");
   const [content, setContent] = useState<string>("");
   const [originalContent, setOriginalContent] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingTab, setPendingTab] = useState<string | null>(null);
-
+  
   const isDirty = content !== originalContent;
 
   useEffect(() => {
@@ -25,25 +25,24 @@ export const GlobalPromptsTab: React.FC<GlobalPromptsTabProps> = ({ cliStatus, s
   }, [isDirty, setTabDirty]);
 
   useEffect(() => {
-    loadPrompt();
+    loadConfig();
   }, [activeSubTab]);
 
-  const loadPrompt = async () => {
+  const loadConfig = async () => {
     if (!cliStatus[activeSubTab]) {
       setContent("");
-      setOriginalContent("");
       return;
     }
     
     setIsLoading(true);
     try {
-      const res = await invoke<string>("read_external_prompt", { clientId: activeSubTab });
+      const res = await invoke<string>("read_client_raw_config", { clientId: activeSubTab });
       setContent(res);
       setOriginalContent(res);
     } catch (e: any) {
       setContent("");
       setOriginalContent("");
-      showToast(`读取全局提示词失败: ${e}`, "error");
+      showToast(`读取配置文件失败: ${e}`, "error");
     } finally {
       setIsLoading(false);
     }
@@ -52,9 +51,9 @@ export const GlobalPromptsTab: React.FC<GlobalPromptsTabProps> = ({ cliStatus, s
   const handleSave = useCallback(async (): Promise<boolean> => {
     setIsSaving(true);
     try {
-      await invoke("write_external_prompt", { clientId: activeSubTab, content });
+      await invoke("write_client_raw_config", { clientId: activeSubTab, content });
       setOriginalContent(content);
-      showToast("提示词已成功保存", "success");
+      showToast("配置文件已成功保存", "success");
       return true;
     } catch (e: any) {
       showToast(`保存失败: ${e}`, "error");
@@ -69,6 +68,12 @@ export const GlobalPromptsTab: React.FC<GlobalPromptsTabProps> = ({ cliStatus, s
       registerSaveHandler(handleSave);
     }
   }, [registerSaveHandler, handleSave]);
+
+  const getTargetFileStr = (clientId: string) => {
+    if (clientId === "claude") return "~/.claude/settings.json";
+    if (clientId === "codex") return "~/.codex/config.toml";
+    return "~/.config/opencode/opencode.json";
+  };
 
   const handleTabSwitch = (newTab: string) => {
     if (isDirty) {
@@ -99,11 +104,6 @@ export const GlobalPromptsTab: React.FC<GlobalPromptsTabProps> = ({ cliStatus, s
     setPendingTab(null);
   };
 
-  const getTargetFileStr = (clientId: string) => {
-    if (clientId === "opencode") return "~/.config/opencode/AGENTS.md";
-    return `~/.${clientId}/${clientId === "claude" ? "CLAUDE.md" : "AGENTS.md"}`;
-  };
-
   const renderCliMask = (clientId: string) => {
     if (cliStatus[clientId]) return null;
     const dirName = clientId === "opencode" ? "~/.config/opencode" : `~/.${clientId}`;
@@ -123,9 +123,9 @@ export const GlobalPromptsTab: React.FC<GlobalPromptsTabProps> = ({ cliStatus, s
       <div className="card" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
           <div style={{ display: "flex", gap: "10px" }}>
-            <button className={`tab-select-btn ${activeSubTab === "claude" ? "active" : ""}`} onClick={() => handleTabSwitch("claude")}>Claude Code</button>
-            <button className={`tab-select-btn ${activeSubTab === "codex" ? "active" : ""}`} onClick={() => handleTabSwitch("codex")}>Codex CLI</button>
-            <button className={`tab-select-btn ${activeSubTab === "opencode" ? "active" : ""}`} onClick={() => handleTabSwitch("opencode")}>OpenCode CLI</button>
+            <button className={`tab-select-btn ${activeSubTab === "claude" ? "active" : ""}`} onClick={() => handleTabSwitch("claude")}>Claude 配置</button>
+            <button className={`tab-select-btn ${activeSubTab === "codex" ? "active" : ""}`} onClick={() => handleTabSwitch("codex")}>Codex 配置</button>
+            <button className={`tab-select-btn ${activeSubTab === "opencode" ? "active" : ""}`} onClick={() => handleTabSwitch("opencode")}>OpenCode 配置</button>
           </div>
           
           <div style={{ display: "flex", gap: "10px", visibility: isDirty ? "visible" : "hidden" }}>
@@ -151,7 +151,7 @@ export const GlobalPromptsTab: React.FC<GlobalPromptsTabProps> = ({ cliStatus, s
         </div>
 
         <div style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: 600 }}>原生文件路径：</span>
+          <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: 600 }}>目标文件路径：</span>
           <code style={{ fontSize: "0.8rem", color: "hsl(var(--primary))", backgroundColor: "hsl(var(--primary)/0.1)", padding: "2px 8px", borderRadius: "4px" }}>
             {getTargetFileStr(activeSubTab)}
           </code>
@@ -164,7 +164,7 @@ export const GlobalPromptsTab: React.FC<GlobalPromptsTabProps> = ({ cliStatus, s
             value={content}
             onChange={(e) => setContent(e.target.value)}
             disabled={isLoading || !cliStatus[activeSubTab]}
-            placeholder={isLoading ? "正在加载提示词..." : "提示词内容为空"}
+            placeholder={isLoading ? "正在加载配置文件..." : "配置文件内容为空"}
             style={{
               flex: 1,
               width: "100%",
@@ -201,7 +201,7 @@ export const GlobalPromptsTab: React.FC<GlobalPromptsTabProps> = ({ cliStatus, s
             </header>
             
             <div className="modal-body-section" style={{ color: "var(--text-secondary)", fontSize: "0.95rem", lineHeight: 1.6 }}>
-              当前提示词已被修改但尚未保存。切换客户端将会丢失这些修改。确定要放弃修改吗？
+              当前配置已被修改但尚未保存。切换客户端将会丢失这些修改。确定要放弃修改吗？
             </div>
             
             <footer style={{ display: "flex", justifyContent: "flex-end", gap: "12px", padding: "16px 24px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>

@@ -33,7 +33,8 @@ import {
   AlertCircle,
   X,
   Trash2,
-  MessageSquare
+  MessageSquare,
+  FileCode
 } from "lucide-react";
 import "./App.css";
 // recharts removed
@@ -42,6 +43,7 @@ import { ProvidersTab } from "./components/tabs/ProvidersTab";
 import { ClientConfigTab } from "./components/tabs/ClientConfigTab";
 import { GlobalPromptsTab } from "./components/tabs/GlobalPromptsTab";
 import { ChatTestTab } from "./components/tabs/ChatTestTab";
+import { ConfigFilesTab } from "./components/tabs/ConfigFilesTab";
 
 import { SettingsTab } from "./components/tabs/SettingsTab";
 import { ConnectionModal } from "./components/modals/ConnectionModal";
@@ -671,6 +673,50 @@ function App() {
   // 状态定义
   // ============================================================================
   const [activeTab, setActiveTab] = useState<string>("overview");
+  const [tabDirty, setTabDirty] = useState<Record<string, boolean>>({});
+  const [pendingNavTab, setPendingNavTab] = useState<string | null>(null);
+  const tabSaveHandlers = useRef<Record<string, () => Promise<boolean>>>({});
+
+  const registerSaveHandler = (tabId: string, saveFn: () => Promise<boolean>) => {
+    tabSaveHandlers.current[tabId] = saveFn;
+  };
+
+  const handleNavSwitch = (newTab: string) => {
+    if (activeTab === newTab) return;
+    if (tabDirty[activeTab]) {
+      setPendingNavTab(newTab);
+    } else {
+      setActiveTab(newTab);
+    }
+  };
+
+  const confirmNavSwitch = () => {
+    if (pendingNavTab) {
+      setTabDirty(prev => ({ ...prev, [activeTab]: false }));
+      setActiveTab(pendingNavTab);
+      setPendingNavTab(null);
+    }
+  };
+
+  const cancelNavSwitch = () => {
+    setPendingNavTab(null);
+  };
+
+  const saveAndNavSwitch = async () => {
+    if (!pendingNavTab) return;
+    const saveFn = tabSaveHandlers.current[activeTab];
+    if (saveFn) {
+      const success = await saveFn();
+      if (success) {
+        setTabDirty(prev => ({ ...prev, [activeTab]: false }));
+        setActiveTab(pendingNavTab);
+        setPendingNavTab(null);
+      }
+    } else {
+      confirmNavSwitch();
+    }
+  };
+
   const [darkMode, setDarkMode] = useState<boolean>(true);
   const [trayToggleTarget, setTrayToggleTarget] = useState<{ client_id: string, mode: string } | null>(null);
 
@@ -699,7 +745,6 @@ function App() {
     codex: false,
     opencode: false,
   });
-  const [globalPrompts, setGlobalPrompts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const checkAllClis = async () => {
@@ -715,30 +760,6 @@ function App() {
     checkAllClis();
   }, []);
 
-  useEffect(() => {
-    if (activeTab === "global_prompts") {
-      ["claude", "codex", "opencode"].forEach(async (id) => {
-        try {
-           const content = await invoke<string>("read_external_prompt", { clientId: id });
-           setGlobalPrompts(prev => ({...prev, [id]: content}));
-        } catch(e) {
-           console.error("Failed to read external prompt", id, e);
-        }
-      });
-    }
-  }, [activeTab]);
-
-  const handleSaveGlobalPrompt = async (clientId: string) => {
-    try {
-      await invoke("write_external_prompt", { clientId, content: globalPrompts[clientId] || "" });
-      showToast(`${clientId} 全局提示词已保存到原生文件`, "success");
-      setTimeout(() => showToast("", "success"), 3000);
-    } catch(e: any) {
-      showToast(`保存失败: ${e}`, "error");
-      setTimeout(() => showToast("", "success"), 3000);
-    }
-  };
-  
   // 核心数据状态
   
   const [trafficTrend, setTrafficTrend] = useState<TrafficPoint[]>([]);
@@ -866,7 +887,6 @@ function App() {
   ]);
 
   const [clientSubTab, setClientSubTab] = useState<string>("claude");
-  const [globalPromptSubTab, setGlobalPromptSubTab] = useState<string>("claude");
   const [settingsSubTab, setSettingsSubTab] = useState<string>("strategy");
   const [showAddProviderModal, setShowAddProviderModal] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<number>(1);
@@ -1963,11 +1983,11 @@ function App() {
         <div className="menu-section">
           <div className="menu-title">监控</div>
           <ul className="menu-list">
-            <li className={`menu-item ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
+            <li className={`menu-item ${activeTab === "overview" ? "active" : ""}`} onClick={() => handleNavSwitch("overview")}>
               <div className="menu-icon"><LayoutDashboard size={17} /></div>
               <span>核心概览</span>
             </li>
-            <li className={`menu-item ${activeTab === "chat_test" ? "active" : ""}`} onClick={() => setActiveTab("chat_test")}>
+            <li className={`menu-item ${activeTab === "chat_test" ? "active" : ""}`} onClick={() => handleNavSwitch("chat_test")}>
               <div className="menu-icon"><MessageSquare size={17} /></div>
               <span>对话测试</span>
             </li>
@@ -1977,17 +1997,21 @@ function App() {
         <div className="menu-section">
           <div className="menu-title">代理管理</div>
           <ul className="menu-list">
-            <li className={`menu-item ${activeTab === "providers" ? "active" : ""}`} onClick={() => setActiveTab("providers")}>
+            <li className={`menu-item ${activeTab === "providers" ? "active" : ""}`} onClick={() => handleNavSwitch("providers")}>
               <div className="menu-icon"><Server size={17} /></div>
               <span>供应商管理</span>
             </li>
-            <li className={`menu-item ${activeTab === "client_config" ? "active" : ""}`} onClick={() => setActiveTab("client_config")}>
+            <li className={`menu-item ${activeTab === "client_config" ? "active" : ""}`} onClick={() => handleNavSwitch("client_config")}>
               <div className="menu-icon"><Sliders size={17} /></div>
               <span>客户端配置</span>
             </li>
-            <li className={`menu-item ${activeTab === "global_prompts" ? "active" : ""}`} onClick={() => setActiveTab("global_prompts")}>
+            <li className={`menu-item ${activeTab === "global_prompts" ? "active" : ""}`} onClick={() => handleNavSwitch("global_prompts")}>
               <div className="menu-icon"><FileText size={17} /></div>
               <span>全局提示词</span>
+            </li>
+            <li className={`menu-item ${activeTab === "config_files" ? "active" : ""}`} onClick={() => handleNavSwitch("config_files")}>
+              <div className="menu-icon"><FileCode size={17} /></div>
+              <span>配置文件管理</span>
             </li>
           </ul>
         </div>
@@ -1996,7 +2020,7 @@ function App() {
         <div className="menu-section">
           <div className="menu-title">配置</div>
           <ul className="menu-list">
-            <li className={`menu-item ${activeTab === "settings" ? "active" : ""}`} onClick={() => setActiveTab("settings")}>
+            <li className={`menu-item ${activeTab === "settings" ? "active" : ""}`} onClick={() => handleNavSwitch("settings")}>
               <div className="menu-icon"><Settings size={17} /></div>
               <span>系统全局设置</span>
             </li>
@@ -2037,6 +2061,7 @@ function App() {
               {activeTab === "chat_test" && "在线对话测试"}
               {activeTab === "client_config" && "本地客户端配置接管"}
               {activeTab === "global_prompts" && "一站式原生全局提示词管理"}
+              {activeTab === "config_files" && "原生配置文件集中管理"}
               {activeTab === "stats" && "审计分析统计"}
               {activeTab === "settings" && "系统全局设置"}
             </h2>
@@ -2047,6 +2072,7 @@ function App() {
               {activeTab === "models" && "跨账户管理大模型激活列表及自动发现"}
               {activeTab === "client_config" && "自定义 AI 开发工具轮换策略及负载权重"}
               {activeTab === "global_prompts" && "直接管控散落于系统各处的 CLI 原生系统人设"}
+              {activeTab === "config_files" && "集中化读取和修改各个 AI 客户端工具底层的原始配置文件"}
               {activeTab === "stats" && "多协议吞吐审计、模型活跃度及 Latency 耗时热图"}
               {activeTab === "settings" && "配置默认接管端口、重试及降级逻辑"}
             </p>
@@ -2268,12 +2294,10 @@ function App() {
              ============================================================================ */}
           {activeTab === "global_prompts" && (
             <GlobalPromptsTab
-              globalPromptSubTab={globalPromptSubTab}
-              setGlobalPromptSubTab={setGlobalPromptSubTab}
-              renderCliMask={renderCliMask}
-              handleSaveGlobalPrompt={handleSaveGlobalPrompt}
-              globalPrompts={globalPrompts}
-              setGlobalPrompts={setGlobalPrompts}
+              cliStatus={cliStatus}
+              showToast={showToast}
+              setTabDirty={(dirty) => setTabDirty(prev => ({ ...prev, global_prompts: dirty }))}
+              registerSaveHandler={(fn) => registerSaveHandler("global_prompts", fn)}
             />
           )}
 
@@ -2303,9 +2327,50 @@ function App() {
             />
           )}
 
+          {activeTab === "config_files" && (
+            <ConfigFilesTab
+              cliStatus={cliStatus}
+              showToast={showToast}
+              setTabDirty={(dirty) => setTabDirty(prev => ({ ...prev, config_files: dirty }))}
+              registerSaveHandler={(fn) => registerSaveHandler("config_files", fn)}
+            />
+          )}
+
         </section>
       </main>
 
+
+      {/* ============================================================================
+          MODAL: 导航切换拦截
+         ============================================================================ */}
+      {pendingNavTab && (
+        <div className="modal-overlay">
+          <div className="modal-content-window" style={{ maxWidth: "500px" }} onClick={e => e.stopPropagation()}>
+            <header className="modal-header-section" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "linear-gradient(135deg, hsl(var(--warning)), #fbbf24)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <AlertTriangle size={16} style={{ color: "#fff" }} />
+                </div>
+                <div>
+                  <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1rem", margin: 0, color: "hsl(var(--text-primary))" }}>
+                    有未保存的修改
+                  </h3>
+                </div>
+              </div>
+            </header>
+            
+            <div className="modal-body-section" style={{ color: "var(--text-secondary)", fontSize: "0.95rem", lineHeight: 1.6 }}>
+              当前页面有修改尚未保存。如果切换页面，这些修改将会丢失。确定要放弃修改并切换页面吗？
+            </div>
+            
+            <footer style={{ display: "flex", justifyContent: "flex-end", gap: "12px", padding: "16px 24px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <button className="btn-secondary" onClick={cancelNavSwitch}>继续编辑</button>
+              <button className="btn-secondary" onClick={confirmNavSwitch} style={{ color: "hsl(var(--danger))", borderColor: "hsl(var(--danger)/0.3)", background: "hsl(var(--danger)/0.1)" }}>放弃更改</button>
+              <button className="btn-primary" onClick={saveAndNavSwitch}>保存修改</button>
+            </footer>
+          </div>
+        </div>
+      )}
 
       {/* ============================================================================
           MODAL: 供应商导入预览
