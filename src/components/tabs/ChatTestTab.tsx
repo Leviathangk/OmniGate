@@ -94,12 +94,10 @@ export function ChatTestTab({ providers }: ChatTestTabProps) {
         stream: true
       };
     } else if (provider.protocol === 'codex_responses' || provider.protocol.includes('responses')) {
-      endpoint += '/codex/v1/completions';
-      const prompt = newHistory.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n') + '\nAssistant: ';
+      endpoint += '/codex/v1/responses';
       payload = {
         model: selectedModel,
-        prompt: prompt,
-        max_tokens: 4096,
+        input: newHistory.map(m => ({ role: m.role, content: m.content })),
         stream: true
       };
     } else {
@@ -161,8 +159,11 @@ export function ChatTestTab({ providers }: ChatTestTabProps) {
                     chunkText = data.delta.text;
                   }
                 } else if (provider.protocol === 'codex_responses' || provider.protocol.includes('responses')) {
-                  if (data.choices && data.choices[0] && data.choices[0].text) {
-                    chunkText = data.choices[0].text;
+                  // OpenAI Responses API streaming format
+                  if (data.type === 'response.output_text.delta' && data.delta) {
+                    chunkText = data.delta;
+                  } else if (data.choices && data.choices[0]?.delta?.content) {
+                    chunkText = data.choices[0].delta.content;
                   }
                 } else {
                   // codex_chat
