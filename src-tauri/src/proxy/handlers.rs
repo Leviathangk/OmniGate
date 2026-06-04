@@ -124,7 +124,7 @@ pub async fn handle_claude_messages(
         "unknown".to_string()
     };
     
-    let req_path = "/messages".to_string();
+    let req_path = "/claude/messages".to_string();
 
     let plan = match get_effective_plan(&state, "claude", &headers) {
         Some(p) => p,
@@ -377,7 +377,7 @@ pub async fn handle_opencode_claude(
         "unknown".to_string()
     };
 
-    let req_path = "/messages".to_string();
+    let req_path = "/opencode/claude/messages".to_string();
 
     let plan = match get_effective_plan(&state, "opencode-claude", &headers) {
         Some(p) => p,
@@ -536,7 +536,7 @@ pub async fn handle_opencode_resp(
         json.get("model").and_then(|m| m.as_str()).unwrap_or("unknown").to_string()
     } else { "unknown".to_string() };
 
-    let req_path = path.clone();
+    let req_path = format!("/opencode/responses/{}", path);
     let plan = match get_effective_plan(&state, "opencode-resp", &headers) {
         Some(p) => p,
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers",
@@ -698,7 +698,7 @@ pub async fn handle_opencode_chat(
         json.get("model").and_then(|m| m.as_str()).unwrap_or("unknown").to_string()
     } else { "unknown".to_string() };
 
-    let req_path = path.clone();
+    let req_path = format!("/opencode/chat/{}", path);
     let plan = match get_effective_plan(&state, "opencode-chat", &headers) {
         Some(p) => p,
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers",
@@ -851,7 +851,7 @@ pub async fn handle_codex_proxy(
         "unknown".to_string()
     };
 
-    let req_path = path.clone();
+    let req_path = format!("/codex/{}", path);
     let plan = match get_effective_plan(&state, "codex", &headers) {
         Some(p) => p,
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),

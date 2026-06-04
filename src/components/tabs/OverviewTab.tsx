@@ -125,10 +125,10 @@ export function OverviewTab({
                   {recentActivities.map((act, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid hsl(var(--border-color))' }}>
                       <td style={{ padding: '8px' }}>
-                        {act.protocol === 'claude' && <span title="Claude" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(168, 85, 247, 0.1)', color: '#a855f7', fontSize: '0.7rem', fontWeight: 'bold' }}>Claude</span>}
-                        {act.protocol === 'codex_responses' && <span title="Codex" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', fontSize: '0.7rem', fontWeight: 'bold' }}>Codex</span>}
-                        {act.protocol === 'codex_chat' && <span title="OpenCode" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', fontSize: '0.7rem', fontWeight: 'bold' }}>OpenCode</span>}
-                        {(!act.protocol) && <span style={{ color: 'hsl(var(--text-muted))' }}>-</span>}
+                        {act.request_path?.startsWith('/claude') && <span title="Claude" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(168, 85, 247, 0.1)', color: '#a855f7', fontSize: '0.7rem', fontWeight: 'bold' }}>Claude</span>}
+                        {act.request_path?.startsWith('/codex') && <span title="Codex" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', fontSize: '0.7rem', fontWeight: 'bold' }}>Codex</span>}
+                        {act.request_path?.startsWith('/opencode') && <span title="OpenCode" style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', fontSize: '0.7rem', fontWeight: 'bold' }}>OpenCode</span>}
+                        {(!act.request_path || (!act.request_path.startsWith('/claude') && !act.request_path.startsWith('/codex') && !act.request_path.startsWith('/opencode'))) && <span style={{ color: 'hsl(var(--text-muted))' }}>-</span>}
                       </td>
                       <td style={{ padding: '8px' }}>
                         <span className={`status-badge ${act.status_code === 200 ? 'success' : 'error'}`} style={{ fontSize: '0.7rem' }}>

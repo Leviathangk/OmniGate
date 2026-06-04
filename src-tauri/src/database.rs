@@ -30,6 +30,7 @@ pub struct RecentActivity {
     pub error_message: Option<String>,
     pub created_at: i64,
     pub protocol: Option<String>,
+    pub request_path: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -278,7 +279,7 @@ impl DbManager {
     pub fn get_recent_activities(&self, limit: u32) -> Result<Vec<RecentActivity>, String> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT u.id, IFNULL(p.name, 'Unknown Provider'), u.model_name, u.status_code, u.latency_ms, u.error_message, u.created_at, p.protocol
+            "SELECT u.id, IFNULL(p.name, 'Unknown Provider'), u.model_name, u.status_code, u.latency_ms, u.error_message, u.created_at, p.protocol, u.request_path
              FROM usage_statistics u
              LEFT JOIN providers p ON u.provider_id = p.id
              ORDER BY u.created_at DESC
@@ -295,6 +296,7 @@ impl DbManager {
                 error_message: row.get(5)?,
                 created_at: row.get(6)?,
                 protocol: row.get(7).unwrap_or(None),
+                request_path: row.get(8).unwrap_or_else(|_| String::new()),
             })
         }).map_err(|e| e.to_string())?;
 
