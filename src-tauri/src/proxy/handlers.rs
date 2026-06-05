@@ -12,26 +12,30 @@ use std::time::Instant;
 use tauri::Emitter;
 
 #[derive(serde::Deserialize)]
-struct Fake200Keyword {
+pub struct Fake200Keyword {
     word: String,
     #[serde(rename = "matchType")]
     match_type: String,
 }
 
-pub fn is_fake_200_error(text: &str, db: &crate::database::DbManager) -> bool {
-    let keywords_json = db.get_global_setting("fake_200_keywords", "[]");
-    if let Ok(keywords) = serde_json::from_str::<Vec<Fake200Keyword>>(&keywords_json) {
-        for kw in keywords {
-            if kw.word.trim().is_empty() { continue; }
-            if kw.match_type == "exact" && text.trim() == kw.word.trim() {
-                return true;
-            } else if kw.match_type == "contains" && text.contains(&kw.word) {
-                return true;
-            }
+pub fn is_fake_200_error_with_keywords(text: &str, keywords: &[Fake200Keyword]) -> bool {
+    for kw in keywords {
+        if kw.word.trim().is_empty() { continue; }
+        if kw.match_type == "exact" && text.trim() == kw.word.trim() {
+            return true;
+        } else if kw.match_type == "contains" && text.contains(&kw.word) {
+            return true;
         }
     }
     false
 }
+
+/// 加载一次 fake_200 关键词（每个请函只调用一次）
+pub fn load_fake_200_keywords(db: &crate::database::DbManager) -> Vec<Fake200Keyword> {
+    let keywords_json = db.get_global_setting("fake_200_keywords", "[]");
+    serde_json::from_str::<Vec<Fake200Keyword>>(&keywords_json).unwrap_or_default()
+}
+
 
 fn record_usage(
     state: &Arc<AppState>,
@@ -131,6 +135,8 @@ pub async fn handle_claude_messages(
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),
     };
     
+    // 每个请求只加载一次 fake_200 关键词，避免重复查询 DB
+    let fake_200_kws = crate::proxy::handlers::load_fake_200_keywords(&state.db);
     // 修复问题1：每个供应商独立重试 max_attempts 次，耗尽后再换下一个供应商
     let global_max_retries: i32 = state.db.get_global_setting("max_retries", "2").parse().unwrap_or(2);
     let global_max_retry_timeout: u64 = state.db.get_global_setting("max_retry_timeout", "120").parse().unwrap_or(120);
@@ -277,19 +283,33 @@ pub async fn handle_claude_messages(
                     }
 
                     let mut res = res;
-                    let first_chunk = match res.chunk().await {
-                        Ok(Some(chunk)) => chunk,
-                        Ok(None) => axum::body::Bytes::new(),
-                        Err(e) => {
-                            last_error = format!("读取上游流失败: {e}");
-                            let latency = start_time.elapsed().as_millis() as u32;
-                            record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, 502, latency, Some(last_error.clone()));
-                            continue; // 重试同一供应商
+                    // 收集最多 5 个 chunk （最多 16KB）用于 fake-200 检查，避免错误内容在后续 chunk 才出现
+                    let mut initial_buf: Vec<u8> = Vec::new();
+                    let mut chunks_read = 0usize;
+                    let mut read_err = false;
+                    while chunks_read < 5 && initial_buf.len() < 16 * 1024 {
+                        match res.chunk().await {
+                            Ok(Some(chunk)) => {
+                                initial_buf.extend_from_slice(&chunk);
+                                chunks_read += 1;
+                                // 如果收到第一个 chunk 就已经包含内容，立即退出循环进行检查
+                                if chunks_read >= 1 && !initial_buf.is_empty() { break; }
+                            }
+                            Ok(None) => break,
+                            Err(e) => {
+                                last_error = format!("读取上游流失败: {e}");
+                                let latency = start_time.elapsed().as_millis() as u32;
+                                record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, 502, latency, Some(last_error.clone()));
+                                read_err = true;
+                                break;
+                            }
                         }
-                    };
+                    }
+                    if read_err { continue; }
 
+                    let first_chunk = axum::body::Bytes::from(initial_buf);
                     let first_chunk_str = String::from_utf8_lossy(&first_chunk);
-                    if crate::proxy::handlers::is_fake_200_error(&first_chunk_str, &state.db) {
+                    if crate::proxy::handlers::is_fake_200_error_with_keywords(&first_chunk_str, &fake_200_kws) {
                         last_error = format!("伪装错误(被风控/断连): {}", first_chunk_str.chars().take(200).collect::<String>());
                         let latency = start_time.elapsed().as_millis() as u32;
                         record_usage(&state, &provider.id, &provider.name, &upstream_model_name, &req_path, 502, latency, Some(last_error.clone()));
@@ -385,6 +405,7 @@ pub async fn handle_opencode_claude(
             "[OmniGate] OpenCode Claude 分组未配置任何可用的供应商。请在 OmniGate → 客户端配置 → OpenCode → Claude 协议中添加并启用供应商。").into_response()),
     };
 
+    let fake_200_kws = crate::proxy::handlers::load_fake_200_keywords(&state.db);
     let global_max_retries: i32 = state.db.get_global_setting("max_retries", "2").parse().unwrap_or(2);
     let global_max_retry_timeout: u64 = state.db.get_global_setting("max_retry_timeout", "120").parse().unwrap_or(120);
     let global_request_timeout: u64 = state.db.get_global_setting("request_timeout", "120").parse().unwrap_or(120);
@@ -457,19 +478,20 @@ pub async fn handle_opencode_claude(
                     }
 
                     let mut res = res;
-                    let first_chunk = match res.chunk().await {
-                        Ok(Some(chunk)) => chunk,
-                        Ok(None) => axum::body::Bytes::new(),
-                        Err(e) => {
-                            last_error = format!("读取上游流失败: {e}");
-                            let latency = start_time.elapsed().as_millis() as u32;
-                            record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
-                            continue;
+                    let mut initial_buf: Vec<u8> = Vec::new();
+                    let mut chunks_read = 0usize;
+                    let mut read_err = false;
+                    while chunks_read < 5 && initial_buf.len() < 16 * 1024 {
+                        match res.chunk().await {
+                            Ok(Some(chunk)) => { initial_buf.extend_from_slice(&chunk); chunks_read += 1; if !initial_buf.is_empty() { break; } }
+                            Ok(None) => break,
+                            Err(e) => { last_error = format!("读取上游流失败: {e}"); let latency = start_time.elapsed().as_millis() as u32; record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone())); read_err = true; break; }
                         }
-                    };
-
+                    }
+                    if read_err { continue; }
+                    let first_chunk = axum::body::Bytes::from(initial_buf);
                     let first_chunk_str = String::from_utf8_lossy(&first_chunk);
-                    if crate::proxy::handlers::is_fake_200_error(&first_chunk_str, &state.db) {
+                    if crate::proxy::handlers::is_fake_200_error_with_keywords(&first_chunk_str, &fake_200_kws) {
                         last_error = format!("伪装错误(被风控/断连): {}", first_chunk_str.chars().take(200).collect::<String>());
                         let latency = start_time.elapsed().as_millis() as u32;
                         record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
@@ -543,6 +565,7 @@ pub async fn handle_opencode_resp(
             "[OmniGate] OpenCode Responses 分组未配置任何可用的供应商。请在 OmniGate → 客户端配置 → OpenCode → Responses 协议中添加并启用供应商。").into_response()),
     };
 
+    let fake_200_kws = crate::proxy::handlers::load_fake_200_keywords(&state.db);
     let global_max_retries: i32 = state.db.get_global_setting("max_retries", "2").parse().unwrap_or(2);
     let global_max_retry_timeout: u64 = state.db.get_global_setting("max_retry_timeout", "120").parse().unwrap_or(120);
     let global_request_timeout: u64 = state.db.get_global_setting("request_timeout", "120").parse().unwrap_or(120);
@@ -619,19 +642,20 @@ pub async fn handle_opencode_resp(
                     }
 
                     let mut res = res;
-                    let first_chunk = match res.chunk().await {
-                        Ok(Some(chunk)) => chunk,
-                        Ok(None) => axum::body::Bytes::new(),
-                        Err(e) => {
-                            last_error = format!("读取上游流失败: {e}");
-                            let latency = start_time.elapsed().as_millis() as u32;
-                            record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
-                            continue;
+                    let mut initial_buf: Vec<u8> = Vec::new();
+                    let mut chunks_read = 0usize;
+                    let mut read_err = false;
+                    while chunks_read < 5 && initial_buf.len() < 16 * 1024 {
+                        match res.chunk().await {
+                            Ok(Some(chunk)) => { initial_buf.extend_from_slice(&chunk); chunks_read += 1; if !initial_buf.is_empty() { break; } }
+                            Ok(None) => break,
+                            Err(e) => { last_error = format!("读取上游流失败: {e}"); let latency = start_time.elapsed().as_millis() as u32; record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone())); read_err = true; break; }
                         }
-                    };
-
+                    }
+                    if read_err { continue; }
+                    let first_chunk = axum::body::Bytes::from(initial_buf);
                     let first_chunk_str = String::from_utf8_lossy(&first_chunk);
-                    if crate::proxy::handlers::is_fake_200_error(&first_chunk_str, &state.db) {
+                    if crate::proxy::handlers::is_fake_200_error_with_keywords(&first_chunk_str, &fake_200_kws) {
                         last_error = format!("伪装错误(被风控/断连): {}", first_chunk_str.chars().take(200).collect::<String>());
                         let latency = start_time.elapsed().as_millis() as u32;
                         record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
@@ -705,6 +729,7 @@ pub async fn handle_opencode_chat(
             "[OmniGate] OpenCode Chat 分组未配置任何可用的供应商。请在 OmniGate → 客户端配置 → OpenCode → Chat 协议中添加并启用供应商。").into_response()),
     };
 
+    let fake_200_kws = crate::proxy::handlers::load_fake_200_keywords(&state.db);
     let global_max_retries: i32 = state.db.get_global_setting("max_retries", "2").parse().unwrap_or(2);
     let global_max_retry_timeout: u64 = state.db.get_global_setting("max_retry_timeout", "120").parse().unwrap_or(120);
     let global_request_timeout: u64 = state.db.get_global_setting("request_timeout", "120").parse().unwrap_or(120);
@@ -773,19 +798,20 @@ pub async fn handle_opencode_chat(
                     }
 
                     let mut res = res;
-                    let first_chunk = match res.chunk().await {
-                        Ok(Some(chunk)) => chunk,
-                        Ok(None) => axum::body::Bytes::new(),
-                        Err(e) => {
-                            last_error = format!("读取上游流失败: {e}");
-                            let latency = start_time.elapsed().as_millis() as u32;
-                            record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
-                            continue;
+                    let mut initial_buf: Vec<u8> = Vec::new();
+                    let mut chunks_read = 0usize;
+                    let mut read_err = false;
+                    while chunks_read < 5 && initial_buf.len() < 16 * 1024 {
+                        match res.chunk().await {
+                            Ok(Some(chunk)) => { initial_buf.extend_from_slice(&chunk); chunks_read += 1; if !initial_buf.is_empty() { break; } }
+                            Ok(None) => break,
+                            Err(e) => { last_error = format!("读取上游流失败: {e}"); let latency = start_time.elapsed().as_millis() as u32; record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone())); read_err = true; break; }
                         }
-                    };
-
+                    }
+                    if read_err { continue; }
+                    let first_chunk = axum::body::Bytes::from(initial_buf);
                     let first_chunk_str = String::from_utf8_lossy(&first_chunk);
-                    if crate::proxy::handlers::is_fake_200_error(&first_chunk_str, &state.db) {
+                    if crate::proxy::handlers::is_fake_200_error_with_keywords(&first_chunk_str, &fake_200_kws) {
                         last_error = format!("伪装错误(被风控/断连): {}", first_chunk_str.chars().take(200).collect::<String>());
                         let latency = start_time.elapsed().as_millis() as u32;
                         record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
@@ -857,6 +883,7 @@ pub async fn handle_codex_proxy(
         None => return Ok(build_json_error(StatusCode::BAD_REQUEST, "no_active_providers", "[OmniGate] 当前客户端未配置任何可用的供应商。请在 OmniGate 控制板中添加并启用至少一个供应商。").into_response()),
     };
 
+    let fake_200_kws = crate::proxy::handlers::load_fake_200_keywords(&state.db);
     // 修复问题1：每个供应商独立重试 max_attempts 次
     let global_max_retries: i32 = state.db.get_global_setting("max_retries", "2").parse().unwrap_or(2);
     let global_max_retry_timeout: u64 = state.db.get_global_setting("max_retry_timeout", "120").parse().unwrap_or(120);
@@ -957,19 +984,20 @@ pub async fn handle_codex_proxy(
                     }
 
                     let mut res = res;
-                    let first_chunk = match res.chunk().await {
-                        Ok(Some(chunk)) => chunk,
-                        Ok(None) => axum::body::Bytes::new(),
-                        Err(e) => {
-                            last_error = format!("读取上游流失败: {e}");
-                            let latency = start_time.elapsed().as_millis() as u32;
-                            record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
-                            continue;
+                    let mut initial_buf: Vec<u8> = Vec::new();
+                    let mut chunks_read = 0usize;
+                    let mut read_err = false;
+                    while chunks_read < 5 && initial_buf.len() < 16 * 1024 {
+                        match res.chunk().await {
+                            Ok(Some(chunk)) => { initial_buf.extend_from_slice(&chunk); chunks_read += 1; if !initial_buf.is_empty() { break; } }
+                            Ok(None) => break,
+                            Err(e) => { last_error = format!("读取上游流失败: {e}"); let latency = start_time.elapsed().as_millis() as u32; record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone())); read_err = true; break; }
                         }
-                    };
-
+                    }
+                    if read_err { continue; }
+                    let first_chunk = axum::body::Bytes::from(initial_buf);
                     let first_chunk_str = String::from_utf8_lossy(&first_chunk);
-                    if crate::proxy::handlers::is_fake_200_error(&first_chunk_str, &state.db) {
+                    if crate::proxy::handlers::is_fake_200_error_with_keywords(&first_chunk_str, &fake_200_kws) {
                         last_error = format!("伪装错误(被风控/断连): {}", first_chunk_str.chars().take(200).collect::<String>());
                         let latency = start_time.elapsed().as_millis() as u32;
                         record_usage(&state, &provider.id, &provider.name, &model_name, &req_path, 502, latency, Some(last_error.clone()));
