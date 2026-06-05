@@ -120,47 +120,34 @@ export function SettingsTab({
                     fake200Keywords.map((kw, i) => (
                       <tr key={i}>
                         <td>
-                          <CustomSelect 
-                            value={kw.matchType}
-                            options={[
-                              { value: "contains", label: "包含 (Contains)" },
-                              { value: "exact", label: "完全一致 (Exact)" }
-                            ]}
-                            onChange={(val) => {
-                              const newKws = [...fake200Keywords];
-                              newKws[i].matchType = val as 'contains' | 'exact';
-                              setFake200Keywords(newKws);
-                            }}
-                            style={{ 
-                              background: "rgba(0, 0, 0, 0.2)", 
-                              border: "1px solid var(--border-color)", 
-                              color: "var(--text-color)" 
-                            }}
-                          />
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <CustomSelect 
+                              value={kw.matchType}
+                              options={[
+                                { value: "contains", label: "包含 (Contains)" },
+                                { value: "exact", label: "完全一致 (Exact)" }
+                              ]}
+                              onChange={(val) => {
+                                const newKws = [...fake200Keywords];
+                                newKws[i].matchType = val as 'contains' | 'exact';
+                                setFake200Keywords(newKws);
+                              }}
+                            />
+                          </div>
                         </td>
                         <td>
-                          <input 
-                            type="text" 
-                            style={{ 
-                              margin: 0, 
-                              padding: "6px 10px", 
-                              fontSize: "0.85rem", 
-                              height: "auto", 
-                              width: "100%", 
-                              background: "rgba(0, 0, 0, 0.2)",
-                              border: "1px solid var(--border-color)",
-                              borderRadius: "4px",
-                              color: "var(--text-color)",
-                              outline: "none"
-                            }}
-                            value={kw.word}
-                            onChange={(e) => {
-                              const newKws = [...fake200Keywords];
-                              newKws[i].word = e.target.value;
-                              setFake200Keywords(newKws);
-                            }}
-                            placeholder="例如: tream disconnected"
-                          />
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <input 
+                              type="text" 
+                              value={kw.word}
+                              onChange={(e) => {
+                                const newKws = [...fake200Keywords];
+                                newKws[i].word = e.target.value;
+                                setFake200Keywords(newKws);
+                              }}
+                              placeholder="例如: tream disconnected"
+                            />
+                          </div>
                         </td>
                         <td style={{ textAlign: "center" }}>
                           <div style={{ display: "flex", justifyContent: "center" }}>

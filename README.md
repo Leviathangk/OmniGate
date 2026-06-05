@@ -5,11 +5,12 @@
 # 🌌 OmniGate (万能之门)
 
 <p align="center">
-  <strong>💡 不是做又一个，而是做更易用的一个！</strong>
+  <strong>💡 不是做又一个，而是做更易用的一个！</strong><br>
+  <em>开发者专属的 AI 网关控制面板 —— 彻底终结多客户端密钥配置混乱与接口抖动</em>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/OmniGate-v0.1.9-blueviolet?style=for-the-badge&logo=appveyor" alt="Version" />
+  <img src="https://img.shields.io/badge/OmniGate-v0.2.2-blueviolet?style=for-the-badge&logo=appveyor" alt="Version" />
   <img src="https://img.shields.io/badge/Language-Rust%20%7C%20TypeScript-orange?style=for-the-badge" alt="Languages" />
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey?style=for-the-badge&logo=apple" alt="Platforms" />
 </p>
@@ -20,127 +21,101 @@
 
 ---
 
-## 📢 最新更新 (v0.1.9)
+## 📢 最新更新 (v0.2.2)
 
-* **纯净真实的路由探针**：重构了生效供应商状态（小绿点）的显示逻辑，摒弃了轮询与盲目拉取。现在只有当底层代理引擎真实地向某个供应商发起请求时，界面才会瞬间点亮对应节点，实现了 100% “所见即真实”的流量监控。
-* **快捷移除绑定**：在客户端映射列表中新增“操作”列，现在可以通过点击垃圾桶图标，快速、安全地将某个供应商从当前协议的接管列表中移除，而不影响全局配置。
-* **体验与代码优化**：全面清除了底层 Rust 引擎的大量冗余警告，对代码结构进行了极客级别的洁癖整理，带来更加顺滑的交互与近乎完美的编译健康度。
-
-<p align="center">
-  <strong>🔗 官方展示主页：<a href="https://leviathangk.github.io/OmniGate" target="_blank">leviathangk.github.io/OmniGate</a></strong>
-</p>
+* **原生配置安全直写与拦截保护**：新增独立配置文件管理页面，无需手动寻找本地文件，直接在界面安全编辑并写入原生终端。采用强大的**跨标签页未保存拦截器**，全方位保护你的每一处细微修改，避免数据丢失。
+* **原生防风控重试（Exponential Backoff）**：内置针对 429 (Rate Limit) 与 502 等上游大模型临时错误的**指数级退避重试**机制。失败不报错，而是默默等待并重新突围，保障高并发开发流的稳定性。
+* **200 伪装拦截器**：有些中转服务商拦截请求后仍会下发 `200 OK` 状态码，现已支持自定义“流片段匹配词”，只要命中即刻判断为失败，立刻熔断并切换至下一个备用节点。
+* **UI 工业级焕新**：全面革新弹窗与组件的设计语言，重写所有生硬的边框与对齐，带来如同顶级商业软件般柔顺高雅的视觉与交互体验。
 
 ---
 
-## 🌟 项目愿景
+## 🌟 核心理念
 
-在 AI 辅助编程爆发的时代，我们拥有了越来越多的大模型服务商（OpenAI, Anthropic, DeepSeek, Google, 以及各种中转 API）。然而，当我们在日常开发中使用各种开发辅助 Cli 工具（如 **Claude Cli**、**Codex Cli**、**Opencode Cli**）时，频繁地在各个配置文件中切换密钥、配置代理、管理模型映射是一件极度琐碎且令人沮丧的事情。
+在 AI 辅助编程爆发的时代，开发者面临越来越庞杂的模型渠道。频繁在终端工具（如 Claude CLI、Codex CLI 等）中切换密钥、配置网络、修补断点，不仅打破了心流，更是一种无谓的内耗。
 
-**OmniGate** 的诞生不是为了“又造一个轮子”，而是为了**“做一个真正好用、极致易用、坚如磐石的开发者网关控制面板”**。
-
-一处配置，处处使用。无论是直连还是多节点动态调度，OmniGate 都以优雅的 GUI 交互和强悍的 Rust 底层，为您彻底终结 AI 服务管理混乱的痛点。
-
----
-
-## ⚡ 核心特性
-
-### 1. 🎛️ 统一的供应商管理面板
-* **一处配置，处处使用**：集中管理您所有的 API Key 和接口地址。
-* **模型一键拉取**：一键从云端拉取供应商支持的所有模型列表，无需手动查找与输入。
-* 支持主流协议标准，让多账号、多渠道的管理变得轻而易举。
-
-### 2. 🔀 接管模式 vs 直连模式 —— 想怎么用，随你便
-根据开发者的实际使用场景，OmniGate 独创了双模式配置写入机制：
-
-* **🔌 直连模式**：
-  直接将选定供应商的**原始连接信息与 API Key** 写入 Cli 配置文件中。OmniGate 作为静态配置生成器，在写入后不参与任何流量转发，实现完全零延迟的直接通信。
-* **🛡️ 接管模式**：
-  将 **OmniGate 的本控网关连接信息** 写入对应的 Cli 配置文件中，所有请求通过本地运行的 OmniGate 代理网关进行智能化转发与多路调度。
-
-### 3. 🧠 智脑路由与多级接管策略
-当处于**接管模式**时，OmniGate 底层的 Rust 负载均衡引擎提供了三种顶级的调度策略：
-* **指定顺序（默认 🌟）**：按照您拖拽/指定的顺序，一个供应商“用废”后自动无缝切换到下一个，保障开发流的极致连续性。
-* **手动选择**：固定绑定指定的某一个供应商一直使用，不进行任何动态切换。
-* **随机切换（不推荐）**：在可用供应商间随机分发流量（注意：随机切换会降低上游服务商的 Context 缓存可用性，请谨慎选择）。
-
-### 4. 🔀 Claude 自由映射与默认全局映射
-针对 Claude 协议的特殊性，OmniGate 提供了强大的模型别名映射能力：
-* **全局默认映射**：指定某个模型作为缺省接管模型，无视请求侧传入的具体模型名，强制交由全局默认模型接管。
-* **自由别名映射**：通过简单地逗号分隔，轻松将客户端请求的任意模型名（如 `claude-3-5-sonnet`）映射到您中转渠道的实际模型名称（如 `custom-sonnet-v1`）。
-
-### 5. 📝 全局提示词管理
-* **一处搞定，多端共用**：集中化管理您的全局 System Prompt。
-* 通过控制台统一调整或开启 Prompt，自动注入到经过 OmniGate 转发的每一次对话请求中，打造个性化的专属编程助手。
-
-### 6. 🚀 工业级熔断器（Circuit Breaker）与动态降级策略
-为了应对大模型 API 偶发的瞬时网络抖动或服务商封锁，OmniGate 在内存态中实现了一套高性能熔断降级系统：
-* **连续异常降级**：当某个供应商在一轮重试（`retry_count + 1` 次）中全部失败，系统会在内存中对其施加惩罚：
-  * *顺序模式*下：该节点的优先级排序临时向后延后 1000 位，迅速让路给备用节点。
-  * *随机模式*下：该节点的流量权重减半（指数级衰减，直至保留最低权重 1），降低被选中的概率。
-* **一击必愈（自愈）**：被惩罚的节点一旦在后续重试中**成功响应一次**，立刻秒级洗刷所有惩罚，满血复活！
-* **大家平权机制**：若所有可用节点都意外处于惩罚状态，系统将自动清空所有惩罚记录，大家重回同一起跑线平权竞争，防止陷入死锁，同时规避了 SQLite 磁盘高频 IO 带来的开销。
+**OmniGate 并不想成为“又一个”生硬的脚本工具，我们追求极致易用、坚如磐石的开发者控制面板。**
+一处配置，处处使用。兼具 **Rust 的强悍性能** 与 **Tauri 的轻量优雅**。
 
 ---
 
-## 📸 功能模块展示
+## ⚡ 九大核心特性
 
-### 🖥️ 核心状态概览
-在主面板直观掌控网关运行状态、API 访问延迟和实时流量统计。
-<p align="center">
-  <img src="./imgs/核心概览.png" alt="核心概览" width="90%" style="border-radius: 8px; border: 1px solid #eaecef;" />
-</p>
+### 01 / 统一供应商纳管与模型云端一键拉取
+集中化纳管你的所有 API 渠道，支持一键从上游云端直接拉取最新可用的模型列表，告别查文档、手工输入的刀耕火种时代。
 
-### 🗃️ 统一供应商管理与模型映射
-一站式绑定供应商，支持一键模型自动拉取与 Claude 模型别名的自由映射。
+### 02 / 双模式运行：想怎么用，随你便
+- **直连模式 (Direct)**：将供应商原始信息“原封不动”直写到客户端配置中。网关零介入，享受极致的原生性能与零延迟。
+- **接管模式 (Proxy)**：将配置指向 OmniGate 本地网关。让所有的 API 请求流经本地网关，享受路由调度、断路保护与流量观测。
+
+### 03 / 多级接管调度机制
+根据场景自由选择你的调度策略：
+- **指定顺序（用废自切）**：依序访问。某个节点遭遇错误熔断后，自动毫秒级切换到下一顺位，保证开发心流不断档。
+- **手动锁定**：将流量死锁在某一固定渠道。
+- **随机分发**：在所有存活节点中随机抽签分配流量（注意：随机分发可能会降低长对话的 Context 缓存命中率）。
+
+### 04 / Claude 模型别名与默认映射
+无需在客户端中反复修改传入的模型名称（如 `claude-3-5-sonnet-20241022`）。在网关处配置逗号分隔符，自由映射到你中转渠道的实际别名，或直接设置“全局缺省模型”，强制收拢所有未匹配请求。
+
+### 05 / 预设全局 Prompt 管理
+通过 UI 集中管理全局 `System Prompt` 预设，动态开启后，将无感地自动注入到所有的本地网关对话流中。一处设定，所有客户端同时拥有专属业务背景对齐。
+
+### 06 / 工业级熔断降级与秒级自愈
+- **降级惩罚**：某节点发生轮次失败后，顺位立即延后 1000 位（顺序模式），或遭遇权重指数衰减（随机模式），主动让路。
+- **一击必愈 (Self-Healing)**：惩罚状态中的节点，只要在后续尝试中成功响应 1 次，立马洗刷所有“负面评分”，满血复活。
+- **大家平权机制**：若所有节点均跌入惩罚名单，网关立刻重置惩罚队列，防范全网死锁。
+
+### 07 / 防风控重试与 200 伪装识别
+- **指数退避重试**：完美应对上游 429 频控封锁，网关自动按照 `2s, 4s, 8s` 的规律发起指数退避等待，直至到达全局设置的最大阈值。
+- **伪装匹配**：面对不良中转商恶意返回 `HTTP 200` 却内含错误流的恶劣情况，设定关键词拦截后，网关会将其一脚踢出，强行触发熔断。
+
+### 08 / 多端终端配置直写保护
+内置安全配置编辑器。无论是更新 Codex 的 `config.toml` 还是 Opencode 的 `opencode.json`，都可以直接在 GUI 界面完成修改写入。不仅能校验当前环境，更有未保存跨栏拦截，保障你的配置零丢失。
+
+### 09 / 零磁耗：本地高并发 SQLite 事务
+全盘抛弃容易发生层级错乱和语法故障的 YAML 配置。所有状态管理与数据持久化采用高安全性捆绑 SQLite 存储，通过 `RwLock<HashMap>` 实现内存态并发，杜绝频繁磁盘 IO。
+
+---
+
+## 🛠️ 技术底座与性能优势
+
+- **Rust + Tauri**：借助 Rust 极致的内存安全性，提供原生多路复用的超轻量级桌面控制面板，极低内存占用。
+- **Axum + Reqwest**：底层网络转发引擎采用 Axum 路由分发，结合 Reqwest 的连接池复用技术，**代理延迟稳定 < 1ms**。
+- **本地闭环保护**：纯离线运行，所有的 API Key 与交互逻辑严格留存在您的个人设备内。
+
+---
+
+## 📸 运行掠影
+
 <div align="center">
   <table width="100%">
     <tr>
       <td width="50%" align="center">
-        <strong>供应商管理主页</strong><br/>
-        <img src="./imgs/供应商管理.png" alt="供应商管理" width="95%" style="border-radius: 6px;" />
+        <strong>仪表盘：流量概览与接口延迟观测</strong><br/>
+        <img src="./imgs/核心概览.png" alt="核心概览" width="95%" style="border-radius: 6px;" />
       </td>
       <td width="50%" align="center">
-        <strong>拉取模型展示</strong><br/>
-        <img src="./imgs/供应商管理-拉取模型展示.png" alt="拉取模型展示" width="95%" style="border-radius: 6px;" />
+        <strong>供应商防风控：一键云端模型拉取</strong><br/>
+        <img src="./imgs/供应商管理.png" alt="拉取模型展示" width="95%" style="border-radius: 6px;" />
       </td>
     </tr>
     <tr>
-      <td colspan="2" align="center">
-        <strong>Claude 模型映射配置</strong><br/>
-        <img src="./imgs/供应商管理-Claude映射展示.png" alt="Claude映射展示" width="80%" style="border-radius: 6px;" />
-      </td>
-    </tr>
-  </table>
-</div>
-
-### 🔌 客户端配置（以 OpenCode 为例）
-支持三种模式与直连写入，一键即可将网关参数或直连信息持久化到对应的 Cli 配置文件中。
-<div align="center">
-  <table width="100%">
-    <tr>
       <td width="50%" align="center">
-        <strong>接管模式策略配置</strong><br/>
+        <strong>灵活模型映射配置</strong><br/>
+        <img src="./imgs/供应商管理-Claude映射展示.png" alt="Claude映射展示" width="95%" style="border-radius: 6px;" />
+      </td>
+      <td width="50%" align="center">
+        <strong>终端接管与安全直写机制</strong><br/>
         <img src="./imgs/客户端配置-opencode.png" alt="接管配置" width="95%" style="border-radius: 6px;" />
       </td>
-      <td width="50%" align="center">
-        <strong>直连模式直接写入配置</strong><br/>
-        <img src="./imgs/客户端配置-opencode直连写入.png" alt="直连写入" width="95%" style="border-radius: 6px;" />
-      </td>
     </tr>
-  </table>
-</div>
-
-### 🎨 全局提示词与系统设置
-极简而高雅的全局 Prompt 管理面板与端口热切换配置。
-<div align="center">
-  <table width="100%">
     <tr>
       <td width="50%" align="center">
-        <strong>全局 Prompt 配置</strong><br/>
+        <strong>全局级预设 Prompt 编辑器</strong><br/>
         <img src="./imgs/全局提示词.png" alt="全局提示词" width="95%" style="border-radius: 6px;" />
       </td>
       <td width="50%" align="center">
-        <strong>系统设置面板</strong><br/>
+        <strong>深度底层参数配置与退避策略</strong><br/>
         <img src="./imgs/系统全局设置.png" alt="系统全局设置" width="95%" style="border-radius: 6px;" />
       </td>
     </tr>
@@ -149,34 +124,27 @@
 
 ---
 
-## 🛠️ 技术底座与架构优势
+## 💬 社区、交流与赞助
 
-1. **Rust + Tauri**：借助 Rust 极致的内存安全性与高性能运行，提供原生多路复用的超轻量级本地代理。
-2. **Axum + Reqwest**：底层网络转发引擎采用 Axum 进行路由，结合 Reqwest 的多路复用连接池，确保代理延迟控制在毫秒级别。
-3. **零磁耗断路器**：依靠并发安全的内存态数据结构（`RwLock<HashMap>`）跟踪节点信誉分，杜绝频繁读写 SQLite 数据库导致的磁盘频繁唤醒与 IO 延迟。
+如果 OmniGate 终结了你配置密钥的烦恼，让你的开发流再次顺滑，欢迎赞助 3 元请作者喝瓶可乐 🥤，您的每一份支持都是持续进化的燃料！
 
----
-
-## 💬 交流、赞助与支持
-
-如果您在使用过程中有任何反馈、建议或疑问，欢迎加入我们的开发者微信群，或添加作者个人微信一同交流探讨！
-如果 OmniGate 对您有所帮助，或者让您的开发流程变得更加丝滑，欢迎赞助 3 元请作者喝瓶可乐 🥤，您的支持是项目持续迭代的最大动力！
+如果您在使用过程中有任何反馈或改进建议，欢迎加入开发者微信群一同探讨。
 
 <div align="center">
   <table width="100%">
     <tr>
       <td width="33%" align="center">
-        <strong>💬 交流群（进群交流探讨）</strong><br/>
+        <strong>💬 交流探讨群</strong><br/>
         <br/>
         <img src="./imgs/交流群.jpg" alt="交流群" width="180" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
       </td>
       <td width="33%" align="center">
-        <strong>👤 个人微信（反馈与建议）</strong><br/>
+        <strong>👤 微信联络（反馈建议）</strong><br/>
         <br/>
         <img src="./imgs/wechat.jpg" alt="个人微信" width="180" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
       </td>
       <td width="34%" align="center">
-        <strong>🥤 赞助支持（请喝瓶可乐）</strong><br/>
+        <strong>🥤 赞助支持（打赏可乐）</strong><br/>
         <br/>
         <img src="./imgs/coke.jpg" alt="赞助支持" width="180" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
       </td>
@@ -187,5 +155,5 @@
 ---
 
 <p align="center">
-  Made with ❤️ by OmniGate Dev Team
+  <strong>© 2026 OmniGate · Made with ❤️ by Leviathangk & DeepMind Pair Programming</strong>
 </p>

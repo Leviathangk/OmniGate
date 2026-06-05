@@ -575,32 +575,47 @@
                 <div class="feature-cell reveal">
                     <div class="feature-num">01</div>
                     <h3>统一供应商管理</h3>
-                    <p>集中式纳管多平台大模型供应商，一处配置、多 CLI 共享流量。告别在各配置文件中来回粘贴密钥的低效操作。</p>
+                    <p>集中式纳管多平台大模型供应商，一键从云端拉取最新可用模型列表。一处配置、多 CLI 共享流量，告别四处粘贴密钥的低效操作。</p>
                 </div>
                 <div class="feature-cell reveal reveal-delay-1">
                     <div class="feature-num">02</div>
                     <h3>双模式运行</h3>
-                    <p>直连模式配置直写客户端，网关零介入；接管模式强力代理，提供路由与高阶调度。想怎么用，随你便。</p>
+                    <p>直连模式直接将供应商原始信息写入客户端，网关零介入；接管模式开启强力代理，提供流量路由与高阶调度。想怎么用，随你便。</p>
                 </div>
                 <div class="feature-cell reveal reveal-delay-2">
                     <div class="feature-num">03</div>
                     <h3>多级接管调度</h3>
-                    <p>指定顺序用废自切、手动锁定单一渠道、随机分配——三种策略覆盖不同场景的 Context 缓存诉求。</p>
+                    <p>提供指定顺序（用废自切）、锁定单一渠道、随机分配三种顶级调度策略，完美覆盖稳定性与 Context 缓存的不同业务诉求。</p>
                 </div>
                 <div class="feature-cell reveal">
                     <div class="feature-num">04</div>
                     <h3>大模型自由映射</h3>
-                    <p>Claude 协议别名自由转换，全局默认接管模型设置。客户端无需频繁修改模型名，网关自动转换分流。</p>
+                    <p>支持 Claude 协议模型别名自由转换，以及全局默认接管模型。客户端无需频繁修改模型名，网关自动在底层进行转换映射与分流。</p>
                 </div>
                 <div class="feature-cell reveal reveal-delay-1">
                     <div class="feature-num">05</div>
                     <h3>全局 Prompt 管理</h3>
-                    <p>集中管理全局 System Prompt，可动态启用，自动注入到每次 API 通信，一键获得专属业务背景对齐。</p>
+                    <p>集中管理全局 System Prompt 预设指令，一键启用并自动注入到经过代理的每一次会话请求中，获得专属的业务背景对齐。</p>
                 </div>
                 <div class="feature-cell reveal reveal-delay-2">
                     <div class="feature-num">06</div>
+                    <h3>动态防风控与拦截</h3>
+                    <p>原生防风控：遭遇 429/502 临时错误时启动指数级退避重试（Exponential Backoff）；支持动态拦截伪装成 200 的报错响应流。</p>
+                </div>
+                <div class="feature-cell reveal">
+                    <div class="feature-num">07</div>
+                    <h3>多端配置一键接管</h3>
+                    <p>深度适配 Claude CLI、Codex CLI、Opencode CLI。除了代理转发，自带配置编辑器可直接写入原生配置文件，且具备未保存拦截保护。</p>
+                </div>
+                <div class="feature-cell reveal reveal-delay-1">
+                    <div class="feature-num">08</div>
                     <h3>主流 CLI 全面覆盖</h3>
-                    <p>深度适配 Claude CLI、Codex CLI、Opencode CLI 三大头部开发者编程工具，一键接管，即开即用。</p>
+                    <p>无论你是使用 Anthropic 官方客户端，还是各种开源辅助编程终端，OmniGate 都能完美无缝兼容，一次安装，全面生效。</p>
+                </div>
+                <div class="feature-cell reveal reveal-delay-2">
+                    <div class="feature-num">09</div>
+                    <h3>本地 SQLite 事务</h3>
+                    <p>弃用容易产生冲突的 YAML 文件，基于高安全级别的本地 SQLite 事务存储。完全脱机运行，保护所有本地 API Key 的隐私与安全。</p>
                 </div>
             </div>
         </div>
@@ -639,26 +654,24 @@
                         <span class="code-dot r"></span>
                         <span class="code-dot y"></span>
                         <span class="code-dot g"></span>
-                        <span class="code-filename">config.yaml</span>
+                        <span class="code-filename">~/.config/opencode/opencode.json</span>
                     </div>
-<pre><span class="code-comment"># OmniGate 供应商配置</span>
-<span class="code-key">providers</span><span class="code-punct">:</span>
-  <span class="code-punct">-</span> <span class="code-key">name</span><span class="code-punct">:</span> <span class="code-str">openai-main</span>
-    <span class="code-key">base_url</span><span class="code-punct">:</span> <span class="code-str">https://api.openai.com</span>
-    <span class="code-key">api_key</span><span class="code-punct">:</span> <span class="code-str">sk-***</span>
+<pre><span class="code-punct">{</span>
+  <span class="code-comment">// 直连模式直接写入配置，网关零介入</span>
+  <span class="code-key">"api_key"</span><span class="code-punct">:</span> <span class="code-str">"sk-f3b123..."</span><span class="code-punct">,</span>
+  <span class="code-key">"api_url"</span><span class="code-punct">:</span> <span class="code-str">"https://api.openai.com"</span><span class="code-punct">,</span>
+  <span class="code-key">"model"</span><span class="code-punct">:</span> <span class="code-str">"gpt-4o"</span><span class="code-punct">,</span>
+  
+  <span class="code-comment">// 或者一键切换到接管模式 (Proxy)</span>
+  <span class="code-comment">// 流量发往本地网关，享受路由与熔断</span>
+  <span class="code-comment">/*</span>
+  <span class="code-key">"api_key"</span><span class="code-punct">:</span> <span class="code-str">"og-62c8e-proxy-token"</span><span class="code-punct">,</span>
+  <span class="code-key">"api_url"</span><span class="code-punct">:</span> <span class="code-str">"http://127.0.0.1:3456"</span><span class="code-punct">,</span>
+  <span class="code-comment">*/</span>
 
-  <span class="code-punct">-</span> <span class="code-key">name</span><span class="code-punct">:</span> <span class="code-str">deepseek-backup</span>
-    <span class="code-key">base_url</span><span class="code-punct">:</span> <span class="code-str">https://api.deepseek.com</span>
-    <span class="code-key">api_key</span><span class="code-punct">:</span> <span class="code-str">sk-***</span>
-
-<span class="code-key">routing</span><span class="code-punct">:</span>
-  <span class="code-key">strategy</span><span class="code-punct">:</span> <span class="code-str">sequential</span>
-  <span class="code-key">retry_count</span><span class="code-punct">:</span> <span class="code-num">2</span>
-
-<span class="code-key">clients</span><span class="code-punct">:</span>
-  <span class="code-key">codex</span><span class="code-punct">:</span>
-    <span class="code-key">mode</span><span class="code-punct">:</span> <span class="code-str">proxy</span>
-    <span class="code-key">providers</span><span class="code-punct">:</span> <span class="code-punct">[</span><span class="code-str">openai-main</span><span class="code-punct">,</span> <span class="code-str">deepseek-backup</span><span class="code-punct">]</span></pre>
+  <span class="code-key">"editor"</span><span class="code-punct">:</span> <span class="code-str">"code"</span><span class="code-punct">,</span>
+  <span class="code-key">"system_prompt"</span><span class="code-punct">:</span> <span class="code-str">"..."</span>
+<span class="code-punct">}</span></pre>
                 </div>
             </div>
         </div>
