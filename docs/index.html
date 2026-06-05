@@ -3,297 +3,887 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OmniGate - 开发者专属的智能 AI 编程网关面板</title>
-    <!-- Google Fonts -->
+    <title>OmniGate — 万能之门</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
-    <!-- FontAwesome for icons (Correct CDN) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+SC:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* ═══════════════════════════════════════════
+           OmniGate — Editorial × Industrial Design
+           Color: Cream / Slate / Amber
+        ═══════════════════════════════════════════ */
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg:       #FAFAF7;
+            --bg-warm:  #F5F3EE;
+            --fg:       #0F172A;
+            --fg-muted: #64748B;
+            --fg-light: #94A3B8;
+            --accent:   #B8860B;
+            --accent-l: #D4A853;
+            --accent-bg:#FDF6E3;
+            --surface:  #FFFFFF;
+            --border:   #E2E0DB;
+            --border-l: #F0EDE8;
+            --code-bg:  #1E1E2E;
+            --code-fg:  #CDD6F4;
+            --radius:   12px;
+            --radius-sm:8px;
+            --sans:     'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --serif:    'Noto Serif SC', 'Georgia', serif;
+            --mono:     'JetBrains Mono', 'Fira Code', monospace;
+        }
+
+        html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--fg);
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+
+        /* ── Utility ── */
+        .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+        .mono { font-family: var(--mono); }
+
+        /* ── Reveal Animation ── */
+        .reveal {
+            opacity: 0;
+            transform: translateY(32px);
+            transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                        transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+
+        /* ── Navigation ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(250, 250, 247, 0.85);
+            backdrop-filter: blur(16px) saturate(1.2);
+            border-bottom: 1px solid var(--border-l);
+            transition: box-shadow 0.3s;
+        }
+        nav.scrolled { box-shadow: 0 1px 24px rgba(0,0,0,0.06); }
+        .nav-inner {
+            max-width: 1120px; margin: 0 auto; padding: 0 24px;
+            height: 64px; display: flex; align-items: center; justify-content: space-between;
+        }
+        .nav-logo {
+            display: flex; align-items: center; gap: 10px;
+            text-decoration: none; color: var(--fg); font-weight: 700; font-size: 18px;
+            letter-spacing: -0.02em;
+        }
+        .nav-logo .gate-icon {
+            width: 32px; height: 32px; border-radius: 8px;
+            background: var(--fg); color: var(--bg);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px; font-weight: 800;
+        }
+        .nav-links { display: flex; align-items: center; gap: 32px; }
+        .nav-links a {
+            text-decoration: none; color: var(--fg-muted); font-size: 14px;
+            font-weight: 500; transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--fg); }
+        .nav-links .nav-gh {
+            display: flex; align-items: center; gap: 6px;
+            padding: 8px 16px; border-radius: 8px;
+            background: var(--fg); color: var(--bg);
+            font-weight: 600; font-size: 13px;
+            transition: opacity 0.2s;
+        }
+        .nav-links .nav-gh:hover { opacity: 0.85; color: var(--bg); }
+
+        /* ── Hero ── */
+        .hero {
+            padding: 160px 0 100px;
+            position: relative;
+        }
+        .hero::before {
+            content: '';
+            position: absolute; top: 0; right: -200px;
+            width: 600px; height: 600px;
+            background: radial-gradient(circle, rgba(184,134,11,0.06) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 6px 16px; border-radius: 100px;
+            background: var(--accent-bg); border: 1px solid rgba(184,134,11,0.2);
+            font-size: 13px; font-weight: 600; color: var(--accent);
+            margin-bottom: 32px;
+        }
+        .hero-badge .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--accent); animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .hero h1 {
+            font-family: var(--serif);
+            font-size: clamp(42px, 7vw, 80px);
+            font-weight: 900;
+            line-height: 1.05;
+            letter-spacing: -0.03em;
+            margin-bottom: 28px;
+            max-width: 720px;
+        }
+        .hero h1 em {
+            font-style: normal;
+            color: var(--accent);
+            position: relative;
+        }
+        .hero h1 em::after {
+            content: '';
+            position: absolute; bottom: 4px; left: 0; right: 0;
+            height: 3px; background: var(--accent); opacity: 0.3;
+            border-radius: 2px;
+        }
+        .hero-desc {
+            font-size: 18px; color: var(--fg-muted);
+            max-width: 560px; line-height: 1.8;
+            margin-bottom: 48px;
+        }
+        .hero-actions { display: flex; gap: 16px; flex-wrap: wrap; }
+        .btn-primary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 28px; border-radius: 10px;
+            background: var(--fg); color: var(--bg);
+            font-weight: 600; font-size: 15px;
+            text-decoration: none; transition: all 0.25s;
+            border: none; cursor: pointer;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(15,23,42,0.15); }
+        .btn-secondary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 28px; border-radius: 10px;
+            background: transparent; color: var(--fg);
+            font-weight: 600; font-size: 15px;
+            text-decoration: none; transition: all 0.25s;
+            border: 1px solid var(--border); cursor: pointer;
+        }
+        .btn-secondary:hover { border-color: var(--fg); }
+        .hero-meta {
+            margin-top: 64px;
+            display: flex; gap: 48px; padding-top: 32px;
+            border-top: 1px solid var(--border-l);
+        }
+        .hero-meta-item span {
+            display: block; font-size: 28px; font-weight: 800;
+            font-family: var(--mono); color: var(--fg);
+            letter-spacing: -0.02em;
+        }
+        .hero-meta-item small {
+            font-size: 13px; color: var(--fg-light); font-weight: 500;
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }
+
+        /* ── Section Common ── */
+        section { padding: 100px 0; }
+        .section-label {
+            font-size: 12px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.12em;
+            color: var(--accent); margin-bottom: 16px;
+        }
+        .section-title {
+            font-family: var(--serif);
+            font-size: clamp(28px, 4vw, 42px);
+            font-weight: 700; line-height: 1.2;
+            letter-spacing: -0.02em;
+            margin-bottom: 16px;
+        }
+        .section-desc {
+            font-size: 17px; color: var(--fg-muted);
+            max-width: 520px; line-height: 1.7;
+        }
+
+        /* ── Features ── */
+        #features { background: var(--surface); }
+        .features-header { margin-bottom: 64px; }
+        .features-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 1px; background: var(--border-l); border-radius: var(--radius);
+            overflow: hidden;
+        }
+        .feature-cell {
+            background: var(--surface);
+            padding: 40px 32px;
+            transition: background 0.3s;
+        }
+        .feature-cell:hover { background: var(--bg-warm); }
+        .feature-num {
+            font-family: var(--mono); font-size: 12px; font-weight: 600;
+            color: var(--accent); margin-bottom: 20px;
+            letter-spacing: 0.05em;
+        }
+        .feature-cell h3 {
+            font-size: 17px; font-weight: 700;
+            margin-bottom: 12px; letter-spacing: -0.01em;
+        }
+        .feature-cell p {
+            font-size: 14px; color: var(--fg-muted);
+            line-height: 1.7;
+        }
+
+        /* ── Architecture ── */
+        #architecture { position: relative; }
+        .arch-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; margin-top: 64px; }
+        .arch-flow {
+            display: flex; flex-direction: column; gap: 20px;
+        }
+        .arch-node {
+            padding: 20px 24px; border-radius: var(--radius-sm);
+            border: 1px solid var(--border); background: var(--surface);
+            position: relative; transition: all 0.3s;
+        }
+        .arch-node:hover { border-color: var(--accent); box-shadow: 0 4px 20px rgba(184,134,11,0.08); }
+        .arch-node.highlight {
+            border-color: var(--accent);
+            background: var(--accent-bg);
+        }
+        .arch-node .node-tag {
+            font-size: 10px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--accent); margin-bottom: 6px;
+        }
+        .arch-node h4 { font-size: 15px; font-weight: 700; }
+        .arch-node p { font-size: 13px; color: var(--fg-muted); margin-top: 4px; }
+        .arch-arrow {
+            text-align: center; color: var(--fg-light); font-size: 18px;
+            line-height: 1; padding: 4px 0;
+        }
+        .arch-code-block {
+            background: var(--code-bg); border-radius: var(--radius);
+            padding: 28px; overflow-x: auto; position: relative;
+        }
+        .arch-code-block .code-header {
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 20px; padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .code-dot.r { background: #FF5F57; }
+        .code-dot.y { background: #FEBC2E; }
+        .code-dot.g { background: #28C840; }
+        .code-filename {
+            font-family: var(--mono); font-size: 12px; color: #6C7086;
+            margin-left: 8px;
+        }
+        .arch-code-block pre {
+            font-family: var(--mono); font-size: 13px;
+            line-height: 1.8; color: var(--code-fg);
+        }
+        .code-comment { color: #6C7086; }
+        .code-key { color: #89B4FA; }
+        .code-str { color: #A6E3A1; }
+        .code-punct { color: #89DCEB; }
+        .code-num { color: #FAB387; }
+
+        /* ── Modes ── */
+        #modes { background: var(--surface); }
+        .modes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 64px; }
+        .mode-card {
+            padding: 48px 40px; border-radius: var(--radius);
+            border: 1px solid var(--border-l); position: relative;
+            overflow: hidden; transition: all 0.3s;
+        }
+        .mode-card:hover { border-color: var(--border); }
+        .mode-card .mode-tag {
+            display: inline-block; padding: 4px 12px;
+            border-radius: 6px; font-size: 11px;
+            font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.08em; margin-bottom: 24px;
+        }
+        .mode-card.direct .mode-tag { background: #EFF6FF; color: #2563EB; }
+        .mode-card.proxy .mode-tag { background: var(--accent-bg); color: var(--accent); }
+        .mode-card h3 {
+            font-family: var(--serif); font-size: 26px;
+            font-weight: 700; margin-bottom: 16px;
+        }
+        .mode-card p { font-size: 15px; color: var(--fg-muted); line-height: 1.7; margin-bottom: 28px; }
+        .mode-card ul { list-style: none; }
+        .mode-card li {
+            font-size: 14px; padding: 8px 0;
+            border-bottom: 1px solid var(--border-l);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .mode-card li:last-child { border-bottom: none; }
+        .mode-card li .check { color: var(--accent); font-size: 14px; flex-shrink: 0; }
+
+        /* ── Circuit Breaker ── */
+        #breaker { position: relative; }
+        .breaker-content { margin-top: 64px; }
+        .breaker-flow {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+        }
+        .breaker-step {
+            padding: 36px 28px; border-radius: var(--radius);
+            border: 1px solid var(--border); background: var(--surface);
+            position: relative;
+        }
+        .breaker-step .step-num {
+            font-family: var(--mono); font-size: 48px; font-weight: 800;
+            color: var(--border-l); line-height: 1;
+            margin-bottom: 16px;
+        }
+        .breaker-step h4 { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
+        .breaker-step p { font-size: 14px; color: var(--fg-muted); line-height: 1.7; }
+        .breaker-step .step-accent {
+            position: absolute; top: 0; left: 28px; width: 40px; height: 3px;
+            background: var(--accent); border-radius: 0 0 3px 3px;
+        }
+
+        /* ── Clients ── */
+        #clients { background: var(--surface); }
+        .clients-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 24px; margin-top: 64px;
+        }
+        .client-card {
+            padding: 32px 28px; border-radius: var(--radius);
+            border: 1px solid var(--border-l); background: var(--bg);
+            transition: all 0.3s;
+        }
+        .client-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.05); }
+        .client-icon {
+            width: 44px; height: 44px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; font-weight: 800; margin-bottom: 20px;
+            font-family: var(--mono);
+        }
+        .client-card.claude .client-icon { background: #F0E6D8; color: #B8860B; }
+        .client-card.codex .client-icon { background: #E8F4E8; color: #2D7D2D; }
+        .client-card.opencode .client-icon { background: #E8ECF4; color: #4A5BC7; }
+        .client-card h4 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+        .client-card p { font-size: 13px; color: var(--fg-muted); line-height: 1.7; }
+
+        /* ── Tech Stack ── */
+        #tech { position: relative; }
+        .tech-pills {
+            display: flex; flex-wrap: wrap; gap: 12px; margin-top: 48px;
+        }
+        .tech-pill {
+            padding: 12px 22px; border-radius: 100px;
+            border: 1px solid var(--border); background: var(--surface);
+            font-family: var(--mono); font-size: 14px; font-weight: 500;
+            display: flex; align-items: center; gap: 8px;
+            transition: all 0.25s;
+        }
+        .tech-pill:hover { border-color: var(--accent); color: var(--accent); }
+        .tech-pill .pill-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+        }
+        .pill-rust { background: #CE422B; }
+        .pill-tauri { background: #24C8D8; }
+        .pill-axum { background: #1A1A2E; }
+        .pill-reqwest { background: #4A90D9; }
+        .pill-ts { background: #3178C6; }
+        .pill-yaml { background: #CB171E; }
+
+        .tech-arch {
+            margin-top: 48px;
+            display: grid; grid-template-columns: 2fr 1fr; gap: 32px;
+        }
+        .tech-arch-card {
+            padding: 36px; border-radius: var(--radius);
+            border: 1px solid var(--border); background: var(--surface);
+        }
+        .tech-arch-card h4 {
+            font-size: 15px; font-weight: 700; margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .tech-arch-card h4 .dot-accent {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent);
+        }
+        .tech-arch-card ul { list-style: none; }
+        .tech-arch-card li {
+            font-size: 14px; padding: 10px 0;
+            border-bottom: 1px solid var(--border-l);
+            display: flex; align-items: baseline; gap: 10px;
+        }
+        .tech-arch-card li:last-child { border-bottom: none; }
+        .tech-arch-card li .li-label {
+            font-weight: 600; color: var(--fg); min-width: 80px;
+        }
+        .tech-arch-card li .li-desc { color: var(--fg-muted); }
+
+        /* ── CTA ── */
+        #cta {
+            background: var(--fg); color: var(--bg);
+            text-align: center; position: relative; overflow: hidden;
+        }
+        #cta::before {
+            content: ''; position: absolute; top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: radial-gradient(ellipse at 30% 50%, rgba(184,134,11,0.12) 0%, transparent 60%);
+        }
+        .cta-inner { position: relative; z-index: 1; }
+        #cta .section-label { color: var(--accent-l); }
+        #cta .section-title { color: var(--bg); }
+        #cta .section-desc { color: rgba(250,250,247,0.6); margin: 0 auto 40px; }
+        .cta-actions { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+        .btn-cta-primary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 16px 32px; border-radius: 10px;
+            background: var(--bg); color: var(--fg);
+            font-weight: 700; font-size: 15px;
+            text-decoration: none; transition: all 0.25s;
+            border: none; cursor: pointer;
+        }
+        .btn-cta-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+        .btn-cta-ghost {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 16px 32px; border-radius: 10px;
+            background: transparent; color: var(--bg);
+            font-weight: 600; font-size: 15px;
+            text-decoration: none; transition: all 0.25s;
+            border: 1px solid rgba(250,250,247,0.2); cursor: pointer;
+        }
+        .btn-cta-ghost:hover { border-color: rgba(250,250,247,0.5); }
+
+        /* ── Footer ── */
+        footer {
+            padding: 48px 0; border-top: 1px solid var(--border-l);
+        }
+        .footer-inner {
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .footer-left { font-size: 13px; color: var(--fg-light); }
+        .footer-left a { color: var(--fg-muted); text-decoration: none; }
+        .footer-left a:hover { color: var(--fg); }
+        .footer-right { display: flex; gap: 24px; }
+        .footer-right a {
+            font-size: 13px; color: var(--fg-light);
+            text-decoration: none; transition: color 0.2s;
+        }
+        .footer-right a:hover { color: var(--fg); }
+
+        /* ── Decorative line ── */
+        .divider {
+            width: 100%; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border), transparent);
+        }
+
+        /* ── SVG Icons (inline) ── */
+        .icon-svg { width: 16px; height: 16px; fill: currentColor; }
+
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+            .features-grid { grid-template-columns: 1fr; }
+            .arch-layout { grid-template-columns: 1fr; gap: 48px; }
+            .modes-grid { grid-template-columns: 1fr; }
+            .breaker-flow { grid-template-columns: 1fr; }
+            .clients-grid { grid-template-columns: 1fr; }
+            .tech-arch { grid-template-columns: 1fr; }
+            .hero-meta { flex-direction: column; gap: 24px; }
+            .nav-links .hide-mobile { display: none; }
+        }
+
+        @media (max-width: 600px) {
+            .hero h1 { font-size: 36px; }
+            .hero-desc { font-size: 16px; }
+            section { padding: 72px 0; }
+            .mode-card { padding: 32px 24px; }
+            .feature-cell { padding: 28px 20px; }
+        }
+    </style>
 </head>
 <body>
-    <!-- Background Grid & Glows -->
-    <div class="grid-overlay"></div>
-    <div class="glow-bg">
-        <div class="glow-circle purple"></div>
-        <div class="glow-circle blue"></div>
-    </div>
 
-    <!-- Navigation -->
-    <nav class="glass-header">
-        <div class="nav-container">
-            <a href="#" class="logo">
-                <div class="logo-icon-wrapper">
-                    <i class="fa-solid fa-server"></i>
-                </div>
-                <span class="logo-text">OmniGate</span>
+    <!-- ════════ Navigation ════════ -->
+    <nav>
+        <div class="nav-inner">
+            <a href="#" class="nav-logo">
+                <div class="gate-icon">⬡</div>
+                OmniGate
             </a>
             <div class="nav-links">
-                <a href="#features">核心特性</a>
-                <a href="#showcase">界面演示</a>
-                <a href="#breaker">容灾机制</a>
-                <a href="#community">合作与支持</a>
-                <a href="https://github.com/Leviathangk/OmniGate" target="_blank" class="nav-btn"><i class="fa-brands fa-github"></i> GitHub</a>
+                <a href="#features" class="hide-mobile">特性</a>
+                <a href="#architecture" class="hide-mobile">架构</a>
+                <a href="#modes" class="hide-mobile">模式</a>
+                <a href="#breaker" class="hide-mobile">容灾</a>
+                <a href="https://github.com/Leviathangk/OmniGate" target="_blank" class="nav-gh">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                    GitHub
+                </a>
             </div>
         </div>
     </nav>
 
-    <!-- Hero Section -->
-    <section class="hero-section">
-        <div class="hero-container">
-            <div class="badge">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> 极简配置 · 智能分流 · 本地网关
+    <!-- ════════ Hero ════════ -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-badge reveal">
+                <span class="dot"></span>
+                v0.1.9 · Rust + Tauri
             </div>
-            <h1 class="hero-title">重新定义 AI 编程助手的 <br><span class="gradient-text">流量分发与容灾控制</span></h1>
-            <p class="hero-subtitle">OmniGate 是一款专为 AI 辅助编程设计的本地智能网关控制面板。一处配置，处处使用，彻底终结多客户端密钥配置混乱与接口抖动，提供企业级的断路容灾体验。</p>
-            <div class="cta-buttons">
-                <a href="#showcase" class="btn primary-btn"><i class="fa-solid fa-circle-play"></i> 界面演示</a>
-                <a href="https://github.com/Leviathangk/OmniGate" target="_blank" class="btn secondary-btn"><i class="fa-brands fa-github"></i> 浏览开源仓库</a>
+            <h1 class="reveal reveal-delay-1">
+                开发者专属的<br>AI 网关<em>控制面板</em>
+            </h1>
+            <p class="hero-desc reveal reveal-delay-2">
+                一处配置，处处使用。OmniGate 以 Rust 的强悍与 Tauri 的优雅，彻底终结多客户端密钥配置混乱与接口抖动，提供企业级断路容灾体验。
+            </p>
+            <div class="hero-actions reveal reveal-delay-3">
+                <a href="https://github.com/Leviathangk/OmniGate" target="_blank" class="btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                    获取 OmniGate
+                </a>
+                <a href="#features" class="btn-secondary">了解特性 →</a>
             </div>
-        </div>
-        
-        <!-- Interactive Dashboard Mockup -->
-        <div class="dashboard-mockup">
-            <div class="window-header">
-                <span class="dot red"></span>
-                <span class="dot yellow"></span>
-                <span class="dot green"></span>
-                <span class="window-title">OmniGate Dashboard — 实时流量与供应商监控</span>
-            </div>
-            <div class="window-body">
-                <img src="./imgs/核心概览.png" alt="OmniGate Dashboard" class="mockup-img">
+            <div class="hero-meta reveal">
+                <div class="hero-meta-item">
+                    <span>3</span>
+                    <small>CLI 覆盖</small>
+                </div>
+                <div class="hero-meta-item">
+                    <span>&lt;1ms</span>
+                    <small>代理延迟</small>
+                </div>
+                <div class="hero-meta-item">
+                    <span>0</span>
+                    <small>磁盘 IO</small>
+                </div>
+                <div class="hero-meta-item">
+                    <span>MIT</span>
+                    <small>开源协议</small>
+                </div>
             </div>
         </div>
     </section>
 
-    <!-- Features Grid -->
-    <section id="features" class="section">
+    <div class="divider"></div>
+
+    <!-- ════════ Features ════════ -->
+    <section id="features">
         <div class="container">
-            <div class="section-header">
-                <h2 class="section-title">为高效开发而生的核心功能</h2>
-                <p class="section-subtitle">打破传统 CLI 工具硬编码 API Key 的繁琐体验，用更内聚、更可靠的方式连接每一个大模型。</p>
+            <div class="features-header">
+                <div class="section-label reveal">核心特性</div>
+                <h2 class="section-title reveal reveal-delay-1">不是做又一个，<br>而是做更易用的一个</h2>
+                <p class="section-desc reveal reveal-delay-2">打破传统 CLI 工具硬编码 API Key 的繁琐体验，用更内聚、更可靠的方式连接每一个大模型。</p>
             </div>
             <div class="features-grid">
-                <div class="feature-card">
-                    <div class="feature-icon"><i class="fa-solid fa-cubes"></i></div>
-                    <h3>统一的供应商管理</h3>
-                    <p>集中式纳管多平台大模型供应商，一处配置、多 Cli 共享流量，告别在各个配置文件中来回粘贴密钥的低效操作。</p>
+                <div class="feature-cell reveal">
+                    <div class="feature-num">01</div>
+                    <h3>统一供应商管理</h3>
+                    <p>集中式纳管多平台大模型供应商，一处配置、多 CLI 共享流量。告别在各配置文件中来回粘贴密钥的低效操作。</p>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon"><i class="fa-solid fa-circle-nodes"></i></div>
-                    <h3>直连与接管双模式</h3>
-                    <p>支持<b>直连模式</b>（配置直写客户端，网关不参与通信）与<b>接管模式</b>（网关强力代理，提供路由与高阶调度），极具灵活性。</p>
+                <div class="feature-cell reveal reveal-delay-1">
+                    <div class="feature-num">02</div>
+                    <h3>双模式运行</h3>
+                    <p>直连模式配置直写客户端，网关零介入；接管模式强力代理，提供路由与高阶调度。想怎么用，随你便。</p>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon"><i class="fa-solid fa-sliders"></i></div>
-                    <h3>多级接管调度策略</h3>
-                    <p>接管状态下支持<b>指定顺序</b>（按优先级顺序用废一个自动切下一个）、<b>手动锁定</b>及随机分配，契合不同的 Context 缓存诉求。</p>
+                <div class="feature-cell reveal reveal-delay-2">
+                    <div class="feature-num">03</div>
+                    <h3>多级接管调度</h3>
+                    <p>指定顺序用废自切、手动锁定单一渠道、随机分配——三种策略覆盖不同场景的 Context 缓存诉求。</p>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon"><i class="fa-solid fa-code-compare"></i></div>
+                <div class="feature-cell reveal">
+                    <div class="feature-num">04</div>
                     <h3>大模型自由映射</h3>
-                    <p>支持 Claude 协议别名的自由转换与全局默认接管模型设置，客户端无需频繁修改请求模型名，网关自动转换分流。</p>
+                    <p>Claude 协议别名自由转换，全局默认接管模型设置。客户端无需频繁修改模型名，网关自动转换分流。</p>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon"><i class="fa-solid fa-terminal"></i></div>
+                <div class="feature-cell reveal reveal-delay-1">
+                    <div class="feature-num">05</div>
+                    <h3>全局 Prompt 管理</h3>
+                    <p>集中管理全局 System Prompt，可动态启用，自动注入到每次 API 通信，一键获得专属业务背景对齐。</p>
+                </div>
+                <div class="feature-cell reveal reveal-delay-2">
+                    <div class="feature-num">06</div>
                     <h3>主流 CLI 全面覆盖</h3>
-                    <p>深度适配并完美接管 <b>Claude CLI</b>、<b>Codex CLI</b> 以及 <b>Opencode CLI</b> 三大头部开发者辅助编程工具。</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon"><i class="fa-solid fa-paragraph"></i></div>
-                    <h3>全局 System Prompt 管理</h3>
-                    <p>在网关层统一管理全局 System Prompt，可自定义启用状态，自动融入每一次 API 通信，一键获得专属业务背景对齐。</p>
+                    <p>深度适配 Claude CLI、Codex CLI、Opencode CLI 三大头部开发者编程工具，一键接管，即开即用。</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Showcase Tabs Section -->
-    <section id="showcase" class="section alt-bg">
+    <!-- ════════ Architecture ════════ -->
+    <section id="architecture">
         <div class="container">
-            <div class="section-header">
-                <h2 class="section-title">高雅、极简的管理面板</h2>
-                <p class="section-subtitle">基于原生 Tauri + TS 开发的高清管理界面，不仅好看，更是极致流畅 of 顺滑操控。</p>
-            </div>
-            
-            <div class="tabs-container">
-                <div class="tab-buttons">
-                    <button class="tab-btn active" onclick="switchTab(event, 'provider-tab')"><i class="fa-solid fa-box-open"></i> 供应商与映射管理</button>
-                    <button class="tab-btn" onclick="switchTab(event, 'client-tab')"><i class="fa-solid fa-plug"></i> 客户端模式配置</button>
-                    <button class="tab-btn" onclick="switchTab(event, 'prompt-tab')"><i class="fa-solid fa-sliders"></i> 提示词与全局设置</button>
-                </div>
-                
-                <!-- Tab 1 -->
-                <div id="provider-tab" class="tab-content active">
-                    <div class="showcase-layout">
-                        <div class="showcase-info">
-                            <h3>轻松纳管您的模型供应商</h3>
-                            <p>一处管理全部供应商密钥与模型映射，可一键实时从服务商接口获取最新的模型清单，支持逗号分隔的别名模型灵活转换。</p>
-                            <ul class="check-list">
-                                <li><i class="fa-solid fa-circle-check"></i> 支持自定义 API 地址与密钥</li>
-                                <li><i class="fa-solid fa-circle-check"></i> 云端大模型列表一键智能同步</li>
-                                <li><i class="fa-solid fa-circle-check"></i> 精准的 Claude 客户端别名与默认路由设置</li>
-                            </ul>
-                        </div>
-                        <div class="showcase-media">
-                            <div class="media-carousel">
-                                <img src="./imgs/供应商管理.png" alt="供应商管理" class="active-slide">
-                                <img src="./imgs/供应商管理-拉取模型展示.png" alt="拉取模型展示">
-                                <img src="./imgs/供应商管理-Claude映射展示.png" alt="Claude模型映射">
-                            </div>
-                            <div class="carousel-nav">
-                                <span class="dot active" onclick="changeSlide(this, 0)"></span>
-                                <span class="dot" onclick="changeSlide(this, 1)"></span>
-                                <span class="dot" onclick="changeSlide(this, 2)"></span>
-                            </div>
-                        </div>
+            <div class="section-label reveal">技术架构</div>
+            <h2 class="section-title reveal reveal-delay-1">Rust 驱动，毫秒级转发</h2>
+            <p class="section-desc reveal reveal-delay-2">Axum 路由 + Reqwest 连接池 + RwLock 内存态，从网络层到状态层全链路零等待。</p>
+
+            <div class="arch-layout">
+                <div class="arch-flow reveal">
+                    <div class="arch-node">
+                        <div class="node-tag">Client</div>
+                        <h4>Claude CLI / Codex CLI / Opencode CLI</h4>
+                        <p>开发者终端发起 API 请求</p>
+                    </div>
+                    <div class="arch-arrow">↓</div>
+                    <div class="arch-node highlight">
+                        <div class="node-tag">Gateway</div>
+                        <h4>OmniGate 本地代理网关</h4>
+                        <p>Axum 路由分发 · 策略调度 · 熔断判断 · Prompt 注入</p>
+                    </div>
+                    <div class="arch-arrow">↓</div>
+                    <div class="arch-node">
+                        <div class="node-tag">Provider</div>
+                        <h4>OpenAI / Anthropic / DeepSeek / ...</h4>
+                        <p>多路复用连接池，请求直连上游</p>
                     </div>
                 </div>
-                
-                <!-- Tab 2 -->
-                <div id="client-tab" class="tab-content">
-                    <div class="showcase-layout">
-                        <div class="showcase-info">
-                            <h3>对开发 Cli 客户端的深度掌控</h3>
-                            <p>提供接管模式与直连模式。接管模式下利用 OmniGate 本地网关支持高阶动态降级，直连模式则直接免网关将配置信息安全写回原 Cli 配置中。</p>
-                            <ul class="check-list">
-                                <li><i class="fa-solid fa-circle-check"></i> 接管模式下指定顺序调度（用坏自切）</li>
-                                <li><i class="fa-solid fa-circle-check"></i> 手动模式一键固定单一渠道使用</li>
-                                <li><i class="fa-solid fa-circle-check"></i> 直连写入直接接驳，安全省心</li>
-                            </ul>
-                        </div>
-                        <div class="showcase-media">
-                            <div class="media-carousel">
-                                <img src="./imgs/客户端配置-opencode.png" alt="接管策略配置" class="active-slide">
-                                <img src="./imgs/客户端配置-opencode直连写入.png" alt="直连配置写入">
-                            </div>
-                            <div class="carousel-nav">
-                                <span class="dot active" onclick="changeSlide(this, 0)"></span>
-                                <span class="dot" onclick="changeSlide(this, 1)"></span>
-                            </div>
-                        </div>
+
+                <div class="arch-code-block reveal reveal-delay-1">
+                    <div class="code-header">
+                        <span class="code-dot r"></span>
+                        <span class="code-dot y"></span>
+                        <span class="code-dot g"></span>
+                        <span class="code-filename">config.yaml</span>
                     </div>
-                </div>
-                
-                <!-- Tab 3 -->
-                <div id="prompt-tab" class="tab-content">
-                    <div class="showcase-layout">
-                        <div class="showcase-info">
-                            <h3>全局定义个性化开发助手</h3>
-                            <p>内置一站式全局提示词控制模块，可向后端发送包含特定背景及上下文的全局指令。集成系统网络端口和底层常驻监控管理。</p>
-                            <ul class="check-list">
-                                <li><i class="fa-solid fa-circle-check"></i> 全局 System Prompt 动态注入</li>
-                                <li><i class="fa-solid fa-circle-check"></i> 极简明亮的开关控制</li>
-                                <li><i class="fa-solid fa-circle-check"></i> 系统级服务开关与端口管理</li>
-                            </ul>
-                        </div>
-                        <div class="showcase-media">
-                            <div class="media-carousel">
-                                <img src="./imgs/全局提示词.png" alt="全局提示词" class="active-slide">
-                                <img src="./imgs/系统全局设置.png" alt="系统全局设置">
-                            </div>
-                            <div class="carousel-nav">
-                                <span class="dot active" onclick="changeSlide(this, 0)"></span>
-                                <span class="dot" onclick="changeSlide(this, 1)"></span>
-                            </div>
-                        </div>
-                    </div>
+<pre><span class="code-comment"># OmniGate 供应商配置</span>
+<span class="code-key">providers</span><span class="code-punct">:</span>
+  <span class="code-punct">-</span> <span class="code-key">name</span><span class="code-punct">:</span> <span class="code-str">openai-main</span>
+    <span class="code-key">base_url</span><span class="code-punct">:</span> <span class="code-str">https://api.openai.com</span>
+    <span class="code-key">api_key</span><span class="code-punct">:</span> <span class="code-str">sk-***</span>
+
+  <span class="code-punct">-</span> <span class="code-key">name</span><span class="code-punct">:</span> <span class="code-str">deepseek-backup</span>
+    <span class="code-key">base_url</span><span class="code-punct">:</span> <span class="code-str">https://api.deepseek.com</span>
+    <span class="code-key">api_key</span><span class="code-punct">:</span> <span class="code-str">sk-***</span>
+
+<span class="code-key">routing</span><span class="code-punct">:</span>
+  <span class="code-key">strategy</span><span class="code-punct">:</span> <span class="code-str">sequential</span>
+  <span class="code-key">retry_count</span><span class="code-punct">:</span> <span class="code-num">2</span>
+
+<span class="code-key">clients</span><span class="code-punct">:</span>
+  <span class="code-key">codex</span><span class="code-punct">:</span>
+    <span class="code-key">mode</span><span class="code-punct">:</span> <span class="code-str">proxy</span>
+    <span class="code-key">providers</span><span class="code-punct">:</span> <span class="code-punct">[</span><span class="code-str">openai-main</span><span class="code-punct">,</span> <span class="code-str">deepseek-backup</span><span class="code-punct">]</span></pre>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Circuit Breaker Section -->
-    <section id="breaker" class="section">
+    <div class="divider"></div>
+
+    <!-- ════════ Modes ════════ -->
+    <section id="modes">
         <div class="container">
-            <div class="breaker-layout">
-                <div class="breaker-info">
-                    <div class="section-header align-left">
-                        <span class="micro-badge"><i class="fa-solid fa-shield-halved"></i> 容灾机制说明</span>
-                        <h2 class="section-title">坚如磐石的内存断路器</h2>
-                        <p class="section-subtitle">在高并发、长周期的 AI 编程通信中，面临接口不可用或超时拥堵时，网关能以最低开销秒级自动避险。</p>
-                    </div>
-                    <div class="breaker-features">
-                        <div class="breaker-item">
-                            <div class="breaker-item-icon"><i class="fa-solid fa-bolt-lightning"></i></div>
-                            <div>
-                                <h4>一击必愈 (Self-Healing)</h4>
-                                <p>被处罚降级的不可用节点，只要在后续的请求中成功响应一次，系统立刻秒级重置该节点在内存中的所有惩罚评分，满血复活。</p>
-                            </div>
-                        </div>
-                        <div class="breaker-item">
-                            <div class="breaker-item-icon"><i class="fa-solid fa-scale-balanced"></i></div>
-                            <div>
-                                <h4>大家平权 (Equal Reset)</h4>
-                                <p>当某一客户端所绑定的所有供应商均由于网络故障处于惩罚降级状态时，系统自动清空所有惩罚，使其重回同一起跑线平权竞争，完美规避全网宕机死锁。</p>
-                            </div>
-                        </div>
-                        <div class="breaker-item">
-                            <div class="breaker-item-icon"><i class="fa-solid fa-microchip"></i></div>
-                            <div>
-                                <h4>零磁耗内存态转发</h4>
-                                <p>基于 Rust 并发安全的 `RwLock` 读写锁及内存哈希表，实现秒级高并发流量分发与惩罚分计，完全规避 SQLite 磁盘 IO 的读写损耗。</p>
-                            </div>
-                        </div>
-                    </div>
+            <div class="section-label reveal">双模式</div>
+            <h2 class="section-title reveal reveal-delay-1">直连零延迟，接管全掌控</h2>
+            <p class="section-desc reveal reveal-delay-2">根据你的场景灵活切换——OmniGate 既是配置生成器，也是智能代理网关。</p>
+
+            <div class="modes-grid">
+                <div class="mode-card direct reveal">
+                    <div class="mode-tag">Direct</div>
+                    <h3>直连模式</h3>
+                    <p>直接将供应商的原始连接信息与 API Key 写入 CLI 配置文件。OmniGate 作为静态配置生成器，写入后不参与任何流量转发。</p>
+                    <ul>
+                        <li><span class="check">✓</span> 完全零延迟直连</li>
+                        <li><span class="check">✓</span> 网关不参与通信</li>
+                        <li><span class="check">✓</span> 配置一键写入 CLI</li>
+                        <li><span class="check">✓</span> 适合稳定单一渠道</li>
+                    </ul>
                 </div>
-                <div class="breaker-graphic">
-                    <div class="logic-card">
-                        <div class="logic-header"><i class="fa-solid fa-network-wired"></i> 网关流量与熔断流转图</div>
-                        <div class="logic-step"><span class="step-num">1</span> 客户端请求发起 <i class="fa-solid fa-arrow-right-long text-arrow"></i> 路由引擎解析</div>
-                        <div class="logic-step"><span class="step-num">2</span> 连续重试失败 (retry_count+1)</div>
-                        <div class="logic-step fault"><span class="step-num">3</span> 触发惩罚降级 (Priority+1000 / Weight/2)</div>
-                        <div class="logic-step healing"><span class="step-num">4</span> 节点复苏成功 <i class="fa-solid fa-arrow-right-long text-arrow"></i> 触发“一击必愈”满血重置</div>
-                    </div>
+                <div class="mode-card proxy reveal reveal-delay-1">
+                    <div class="mode-tag">Proxy</div>
+                    <h3>接管模式</h3>
+                    <p>将 OmniGate 的本地网关连接信息写入 CLI 配置，所有请求通过代理进行智能转发与多路调度。</p>
+                    <ul>
+                        <li><span class="check">✓</span> 多供应商智能路由</li>
+                        <li><span class="check">✓</span> 用废自动切换备用</li>
+                        <li><span class="check">✓</span> 熔断降级与自愈</li>
+                        <li><span class="check">✓</span> 全局 Prompt 注入</li>
+                    </ul>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Community & Support Section -->
-    <section id="community" class="section alt-bg">
+    <!-- ════════ Circuit Breaker ════════ -->
+    <section id="breaker">
         <div class="container">
-            <div class="section-header">
-                <h2 class="section-title">官方交流与支持通道</h2>
-                <p class="section-subtitle">如果 OmniGate 为您的工作带来了便利，欢迎与我们沟通或赞助一杯冰可乐支持迭代！</p>
-            </div>
-            
-            <div class="qr-container">
-                <div class="qr-card">
-                    <div class="qr-icon-wrapper"><i class="fa-solid fa-users"></i></div>
-                    <div class="qr-title">官方交流群</div>
-                    <p class="qr-desc">进群与其他开发者探讨 AI 编程、网关优化以及新功能反馈。</p>
-                    <img src="./imgs/交流群.jpg" alt="微信交流群" class="qr-img">
+            <div class="section-label reveal">容灾机制</div>
+            <h2 class="section-title reveal reveal-delay-1">工业级熔断，<br>一击必愈</h2>
+            <p class="section-desc reveal reveal-delay-2">应对 API 瞬时抖动与服务商封锁，OmniGate 在内存态实现高性能熔断降级系统。</p>
+
+            <div class="breaker-flow">
+                <div class="breaker-step reveal">
+                    <div class="step-accent"></div>
+                    <div class="step-num">01</div>
+                    <h4>连续异常降级</h4>
+                    <p>某供应商在一轮重试中全部失败，系统对其施加惩罚：顺序模式下优先级延后 1000 位；随机模式下流量权重指数衰减，直至最低权重 1。</p>
                 </div>
-                <div class="qr-card">
-                    <div class="qr-icon-wrapper"><i class="fa-solid fa-user-gear"></i></div>
-                    <div class="qr-title">个人微信</div>
-                    <p class="qr-desc">随时联系作者，针对定制化合作或重大 Bug 进行直接反馈。</p>
-                    <img src="./imgs/wechat.jpg" alt="个人微信" class="qr-img">
+                <div class="breaker-step reveal reveal-delay-1">
+                    <div class="step-accent"></div>
+                    <div class="step-num">02</div>
+                    <h4>一击必愈 · Self-Healing</h4>
+                    <p>被惩罚节点只要成功响应一次，立刻秒级洗刷所有惩罚评分，满血复活。无需人工干预，无需等待冷却。</p>
                 </div>
-                <div class="qr-card">
-                    <div class="qr-icon-wrapper"><i class="fa-solid fa-mug-hot"></i></div>
-                    <div class="qr-title">赞助支持</div>
-                    <p class="qr-desc">赞助 3 元，请作者喝瓶冰可乐，您的鼓励是项目更新迭代最大的动力！</p>
-                    <img src="./imgs/coke.jpg" alt="赞助支持" class="qr-img">
+                <div class="breaker-step reveal reveal-delay-2">
+                    <div class="step-accent"></div>
+                    <div class="step-num">03</div>
+                    <h4>大家平权 · Equal Reset</h4>
+                    <p>若所有节点均处于惩罚状态，系统自动清空所有惩罚记录，重回同一起跑线平权竞争，完美规避全网死锁。</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Footer -->
+    <div class="divider"></div>
+
+    <!-- ════════ Clients ════════ -->
+    <section id="clients">
+        <div class="container">
+            <div class="section-label reveal">CLI 适配</div>
+            <h2 class="section-title reveal reveal-delay-1">三大头部工具，一键接管</h2>
+            <p class="section-desc reveal reveal-delay-2">深度适配主流 AI 编程 CLI，一处配置即可覆盖全部工作流。</p>
+
+            <div class="clients-grid">
+                <div class="client-card claude reveal">
+                    <div class="client-icon">C</div>
+                    <h4>Claude CLI</h4>
+                    <p>Anthropic 官方命令行工具。支持别名映射与全局默认模型接管，无缝切换上游渠道。</p>
+                </div>
+                <div class="client-card codex reveal reveal-delay-1">
+                    <div class="client-icon">Cx</div>
+                    <h4>Codex CLI</h4>
+                    <p>OpenAI 开发者辅助编程工具。透传模式直连，接管模式多路调度，保障编码流不间断。</p>
+                </div>
+                <div class="client-card opencode reveal reveal-delay-2">
+                    <div class="client-icon">Oc</div>
+                    <h4>Opencode CLI</h4>
+                    <p>开源终端 AI 编程助手。完美兼容协议标准，配置即用，无需额外适配。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════ Tech Stack ════════ -->
+    <section id="tech">
+        <div class="container">
+            <div class="section-label reveal">技术底座</div>
+            <h2 class="section-title reveal reveal-delay-1">极致性能，<br>零磁耗架构</h2>
+            <p class="section-desc reveal reveal-delay-2">基于 Rust 并发安全的内存数据结构，秒级高并发流量分发，完全规避 SQLite 磁盘 IO 损耗。</p>
+
+            <div class="tech-pills reveal">
+                <div class="tech-pill"><span class="pill-dot pill-rust"></span>Rust</div>
+                <div class="tech-pill"><span class="pill-dot pill-tauri"></span>Tauri</div>
+                <div class="tech-pill"><span class="pill-dot pill-axum"></span>Axum</div>
+                <div class="tech-pill"><span class="pill-dot pill-reqwest"></span>Reqwest</div>
+                <div class="tech-pill"><span class="pill-dot pill-ts"></span>TypeScript</div>
+                <div class="tech-pill"><span class="pill-dot pill-yaml"></span>YAML Config</div>
+            </div>
+
+            <div class="tech-arch">
+                <div class="tech-arch-card reveal">
+                    <h4><span class="dot-accent"></span>架构优势</h4>
+                    <ul>
+                        <li>
+                            <span class="li-label">内存安全</span>
+                            <span class="li-desc">Rust 所有权机制，编译期零成本抽象，运行时零 GC 暂停</span>
+                        </li>
+                        <li>
+                            <span class="li-label">多路复用</span>
+                            <span class="li-desc">Reqwest 连接池复用，单连接并发多请求，代理延迟 &lt;1ms</span>
+                        </li>
+                        <li>
+                            <span class="li-label">零磁耗</span>
+                            <span class="li-desc">RwLock&lt;HashMap&gt; 内存态跟踪，杜绝 SQLite 高频磁盘 IO</span>
+                        </li>
+                        <li>
+                            <span class="li-label">原生体验</span>
+                            <span class="li-desc">Tauri 轻量桌面壳，安装包极小，内存占用远低于 Electron</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="tech-arch-card reveal reveal-delay-1">
+                    <h4><span class="dot-accent"></span>运行指标</h4>
+                    <ul>
+                        <li>
+                            <span class="li-label">代理延迟</span>
+                            <span class="li-desc">&lt;1ms（本地网关转发）</span>
+                        </li>
+                        <li>
+                            <span class="li-label">熔断响应</span>
+                            <span class="li-desc">毫秒级内存状态切换</span>
+                        </li>
+                        <li>
+                            <span class="li-label">自愈速度</span>
+                            <span class="li-desc">1 次成功请求即刻恢复</span>
+                        </li>
+                        <li>
+                            <span class="li-label">磁盘写入</span>
+                            <span class="li-desc">仅配置文件，运行时零 IO</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════ CTA ════════ -->
+    <section id="cta">
+        <div class="container cta-inner">
+            <div class="section-label reveal">开始使用</div>
+            <h2 class="section-title reveal reveal-delay-1">一处配置，<br>处处使用</h2>
+            <p class="section-desc reveal reveal-delay-2">彻底终结 AI 服务管理混乱的痛点，用 OmniGate 重新掌控你的开发工作流。</p>
+            <div class="cta-actions reveal reveal-delay-3">
+                <a href="https://github.com/Leviathangk/OmniGate" target="_blank" class="btn-cta-primary">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                    GitHub 仓库
+                </a>
+                <a href="https://leviathangk.github.io/OmniGate" target="_blank" class="btn-cta-ghost">在线演示 →</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════ Footer ════════ -->
     <footer>
         <div class="container">
-            <div class="footer-bottom">
-                <p>&copy; 2026 OmniGate. Built with high-end tech by OmniGate Dev Team</p>
-                <div class="social-links">
-                    <a href="https://github.com/Leviathangk/OmniGate" target="_blank"><i class="fa-brands fa-github"></i> GitHub</a>
+            <div class="footer-inner">
+                <div class="footer-left">
+                    © 2026 OmniGate · Made with ❤️ by <a href="https://github.com/Leviathangk" target="_blank">Leviathangk</a>
+                </div>
+                <div class="footer-right">
+                    <a href="https://github.com/Leviathangk/OmniGate" target="_blank">GitHub</a>
+                    <a href="https://leviathangk.github.io/OmniGate" target="_blank">Demo</a>
+                    <a href="#">MIT License</a>
                 </div>
             </div>
         </div>
     </footer>
 
-    <script src="app.js"></script>
+    <!-- ════════ Scripts ════════ -->
+    <script>
+        // Scroll reveal
+        const reveals = document.querySelectorAll('.reveal');
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+        reveals.forEach(el => observer.observe(el));
+
+        // Nav scroll shadow
+        const nav = document.querySelector('nav');
+        window.addEventListener('scroll', () => {
+            nav.classList.toggle('scrolled', window.scrollY > 10);
+        }, { passive: true });
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(a => {
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                const target = document.querySelector(a.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+
 </body>
 </html>
