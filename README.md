@@ -2,7 +2,7 @@
   <img src="./imgs/核心概览.png" alt="OmniGate Header Banner" width="100%" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);" />
 </p>
 
-# 🌌 OmniGate (万能之门)
+# 🌌 OmniGate
 
 <p align="center">
   <strong>💡 不是做又一个，而是做更易用的一个！</strong><br>
@@ -16,7 +16,8 @@
 </p>
 
 <p align="center">
-  <strong>🔗 官方展示主页：<a href="https://leviathangk.github.io/OmniGate" target="_blank">leviathangk.github.io/OmniGate</a></strong>
+  <strong>🔗 官方展示主页：<a href="https://leviathangk.github.io/OmniGate" target="_blank">leviathangk.github.io/OmniGate</a></strong><br>
+  <strong>🤝 特别鸣谢：<a href="https://linux.do/latest" target="_blank">LinuxDo 社区</a></strong>
 </p>
 
 ---
