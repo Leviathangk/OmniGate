@@ -252,6 +252,7 @@ pub fn run() {
             commands::apply_direct_config,
             commands::restore_opencode_config,
             commands::get_opencode_direct_providers,
+            commands::has_opencode_direct_provider,
             commands::remove_opencode_direct_provider,
             commands::hijack_claude_config,
             commands::restore_claude_config,

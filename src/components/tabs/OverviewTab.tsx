@@ -159,7 +159,7 @@ export function OverviewTab({
         <div className="right-column">
           <div className="panel-card">
             <div className="card-header-row">
-              <h3>使用分布 (按模型)</h3>
+              <h3>今日请求模型 Top 5</h3>
             </div>
             <div style={{ width: '100%', height: '220px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               {modelUsage.length === 0 ? (

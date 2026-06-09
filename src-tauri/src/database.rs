@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{Local, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -311,16 +311,24 @@ impl DbManager {
 
     pub fn get_model_usage_distribution(&self) -> Result<Vec<ModelUsage>, String> {
         let conn = self.conn.lock().unwrap();
+        let today_start = Local::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_local_timezone(Local)
+            .single()
+            .unwrap()
+            .timestamp();
         let mut stmt = conn.prepare(
             "SELECT model_name, COUNT(*) as count
              FROM usage_statistics
-             WHERE status_code = 200
+             WHERE status_code = 200 AND created_at >= ?1
              GROUP BY model_name
              ORDER BY count DESC
-             LIMIT 10"
+             LIMIT 5"
         ).map_err(|e| e.to_string())?;
 
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map(rusqlite::params![today_start], |row| {
             Ok(ModelUsage {
                 name: row.get(0)?,
                 count: row.get(1)?,

@@ -202,6 +202,8 @@ pub fn cascade_delete_provider(
 ) -> Result<(), String> {
     let usage = state.db.get_provider_usage(&id)?;
 
+    let _ = remove_opencode_direct_provider(id.clone(), app_handle.clone());
+
     // 1. Process Direct clients
     for client_id in usage.direct_clients {
         match client_id.as_str() {
@@ -234,6 +236,8 @@ pub fn detach_provider_from_clients(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     let usage = state.db.get_provider_usage(&id)?;
+
+    let _ = remove_opencode_direct_provider(id.clone(), app_handle.clone());
 
     for client_id in usage.direct_clients {
         match client_id.as_str() {
@@ -1180,6 +1184,14 @@ pub fn get_opencode_direct_providers(app_handle: tauri::AppHandle) -> Result<Vec
     }
     
     Ok(providers)
+}
+
+#[tauri::command]
+pub fn has_opencode_direct_provider(
+    provider_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<bool, String> {
+    Ok(get_opencode_direct_providers(app_handle)?.contains(&provider_id))
 }
 
 #[tauri::command]

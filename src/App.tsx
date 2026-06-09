@@ -718,6 +718,7 @@ function App() {
   };
 
   const [darkMode, setDarkMode] = useState<boolean>(true);
+  const themeReadyRef = useRef(false);
   const [trayToggleTarget, setTrayToggleTarget] = useState<{ client_id: string, mode: string } | null>(null);
 
   // 删除供应商确认 Modal 状态
@@ -972,6 +973,9 @@ function App() {
     } else {
       document.documentElement.classList.remove("dark");
     }
+    if (themeReadyRef.current) {
+      invoke("set_global_setting", { key: "theme", value: darkMode ? "dark" : "light" }).catch(console.error);
+    }
   }, [darkMode]);
 
   // 当用户切到设置页时，读取本地配置
@@ -1016,10 +1020,11 @@ function App() {
         invoke<string>("get_global_setting", { key: "max_retries", defaultVal: "2" }),
         invoke<string>("get_global_setting", { key: "max_retry_timeout", defaultVal: "120" }),
         invoke<string>("get_global_setting", { key: "request_timeout", defaultVal: "120" }),
-        invoke<string>("get_global_setting", { key: "fake_200_keywords", defaultVal: "[]" })
+        invoke<string>("get_global_setting", { key: "fake_200_keywords", defaultVal: "[]" }),
+        invoke<string>("get_global_setting", { key: "theme", defaultVal: "dark" })
       ]);
 
-      const [overview, provList, loadedClientConfigs, traffic, recent, dist, heatmap, maxRetriesStr, maxRetryTimeoutStr, requestTimeoutStr, fake200KeywordsStr] = results;
+      const [overview, provList, loadedClientConfigs, traffic, recent, dist, heatmap, maxRetriesStr, maxRetryTimeoutStr, requestTimeoutStr, fake200KeywordsStr, themeStr] = results;
       setTrafficTrend(traffic);
       setRecentActivities(recent);
       setModelUsage(dist);
@@ -1030,6 +1035,9 @@ function App() {
       setGlobalMaxRetries(parseInt(maxRetriesStr as string || "2"));
       setGlobalMaxRetryTimeout(parseInt(maxRetryTimeoutStr as string || "120"));
       setGlobalRequestTimeout(parseInt(requestTimeoutStr as string || "120"));
+      const loadedTheme = themeStr === "light" ? "light" : "dark";
+      themeReadyRef.current = true;
+      setDarkMode(loadedTheme === "dark");
       try {
         const parsed = JSON.parse(fake200KeywordsStr as string || "[]");
         // Backwards compatibility with old string array
@@ -1231,12 +1239,16 @@ function App() {
     if (protocolChanged) {
       try {
         const usage = await invoke<{ proxy_clients: string[], direct_clients: string[] }>("check_provider_usage", { id: editConnectionData.id });
+        const hasOpenCodeDirect = await invoke<boolean>("has_opencode_direct_provider", { providerId: editConnectionData.id });
         let warningMsg = "";
         if (usage.proxy_clients.length > 0) {
           warningMsg += `代理模式: ${usage.proxy_clients.join(", ")}\n`;
         }
-        if (usage.direct_clients.length > 0) {
-          warningMsg += `直连模式: ${usage.direct_clients.join(", ")}\n`;
+        const directClients = hasOpenCodeDirect && !usage.direct_clients.includes("opencode")
+          ? [...usage.direct_clients, "opencode"]
+          : usage.direct_clients;
+        if (directClients.length > 0) {
+          warningMsg += `直连模式: ${directClients.join(", ")}\n`;
         }
         setProtocolChangeWarningMsg(warningMsg);
         setPendingProtocolChangeProvider({ ...editConnectionData });
@@ -1262,7 +1274,7 @@ function App() {
       setEditConnectionData(null);
       if (protocolChanged) {
         await loadData();
-        showToast("协议已变更，已断开该供应商在客户端配置中的旧引用，模型列表已保留", "warning");
+        showToast("协议已变更，已断开该供应商在客户端配置中的旧引用，模型列表已保留", "success");
         return;
       }
       
@@ -1308,7 +1320,7 @@ function App() {
       setPendingProtocolChangeProvider(null);
       setProtocolChangeWarningMsg("");
       await loadData();
-      showToast("协议已变更，已断开该供应商在客户端配置中的旧引用，模型列表已保留", "warning");
+      showToast("协议已变更，已断开该供应商在客户端配置中的旧引用，模型列表已保留", "success");
     } catch (err) {
       alert("保存连接配置失败: " + err);
     }
@@ -1362,13 +1374,17 @@ function App() {
   const handleDeleteProvider = async (id: string) => {
     try {
       const usage = await invoke<{ proxy_clients: string[], direct_clients: string[] }>("check_provider_usage", { id });
+      const hasOpenCodeDirect = await invoke<boolean>("has_opencode_direct_provider", { providerId: id });
       
       let warningMsg = "";
       if (usage.proxy_clients.length > 0) {
         warningMsg += `代理模式: ${usage.proxy_clients.join(", ")}\n`;
       }
-      if (usage.direct_clients.length > 0) {
-        warningMsg += `直连模式: ${usage.direct_clients.join(", ")}\n`;
+      const directClients = hasOpenCodeDirect && !usage.direct_clients.includes("opencode")
+        ? [...usage.direct_clients, "opencode"]
+        : usage.direct_clients;
+      if (directClients.length > 0) {
+        warningMsg += `直连模式: ${directClients.join(", ")}\n`;
       }
       
       setDeleteWarningMsg(warningMsg);
