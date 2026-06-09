@@ -351,25 +351,23 @@ export function ClientConfigTab({
                       <tr>
                         <td colSpan={2}>
                           <div style={{ display: "flex", gap: "10px", width: "100%" }}>
-                            <div style={{ flex: "0 0 160px" }}>
-                              <CustomSelect
-                                value={addingProviderProtocol}
-                                onChange={(v: string) => {
-                                  setAddingProviderProtocol(v);
-                                  setAddingProviderId("");
-                                }}
-                                options={[
-                                  { label: "选择协议", value: "" },
-                                  ...(config.client_id === "claude" ? [{ label: "Claude 协议", value: "claude" }] : []),
-                                  ...(config.client_id === "codex" ? [{ label: "Codex /responses", value: "codex_responses" }] : []),
-                                  ...(config.client_id === "opencode" ? [
+                            {config.client_id === "opencode" && (
+                              <div style={{ flex: "0 0 160px" }}>
+                                <CustomSelect
+                                  value={addingProviderProtocol}
+                                  onChange={(v: string) => {
+                                    setAddingProviderProtocol(v);
+                                    setAddingProviderId("");
+                                  }}
+                                  options={[
+                                    { label: "选择协议", value: "" },
                                     { label: "Claude 协议", value: "claude" },
                                     { label: "Codex /responses", value: "codex_responses" },
                                     { label: "Codex /chat", value: "codex_chat" }
-                                  ] : [])
-                                ]}
-                              />
-                            </div>
+                                  ]}
+                                />
+                              </div>
+                            )}
                             <div style={{ flex: "1" }}>
                               <CustomSelect
                                 value={addingProviderId}
@@ -397,7 +395,14 @@ export function ClientConfigTab({
                                 options={[
                                   { label: "请选择供应商...", value: "" },
                                   ...providers
-                                    .filter(p => p.is_active && p.protocol === addingProviderProtocol && !config.providers.some(cp => cp.id === p.id))
+                                    .filter(p => {
+                                      const targetProtocol = config.client_id === "claude"
+                                        ? "claude"
+                                        : config.client_id === "codex"
+                                          ? "codex_responses"
+                                          : addingProviderProtocol;
+                                      return p.is_active && p.protocol === targetProtocol && !config.providers.some(cp => cp.id === p.id);
+                                    })
                                     .map(p => ({ label: p.name, value: p.id }))
                                 ]}
                               />
