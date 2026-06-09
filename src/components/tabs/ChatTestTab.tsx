@@ -294,10 +294,12 @@ export function ChatTestTab({ providers }: ChatTestTabProps) {
               }}>
                 <div style={{ 
                   width: '32px', height: '32px', borderRadius: '50%', 
-                  background: msg.role === 'user' ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)))',
+                  background: msg.role === 'user' ? 'hsl(var(--primary) / 0.16)' : 'hsl(var(--bg-card))',
+                  border: `1px solid ${msg.role === 'user' ? 'hsl(var(--primary) / 0.34)' : 'hsl(var(--border-color))'}`,
+                  color: msg.role === 'user' ? 'hsl(var(--primary))' : 'hsl(var(--text-secondary))',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
                 }}>
-                  {msg.role === 'user' ? <User size={16} color="white" /> : <Bot size={16} color="white" />}
+                  {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                 </div>
                 <div style={{ 
                   backgroundColor: msg.role === 'user' ? 'hsl(var(--primary) / 0.2)' : 'rgba(255,255,255,0.03)',
