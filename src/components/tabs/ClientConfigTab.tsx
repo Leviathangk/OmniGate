@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, AlertTriangle, FileText, Pin, Minus, Dices, BarChart2, Zap, Globe, Trash2 } from "lucide-react";
+import { Plus, AlertTriangle, FileText, Pin, Minus, Dices, BarChart2, Zap, Globe, Trash2, GripVertical } from "lucide-react";
 import { CustomSelect, Provider, ClientConfig } from "../../App";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -12,7 +12,6 @@ interface ClientConfigTabProps {
   handleStrategyChange: (clientId: string, strategy: string) => void;
   setAddingProviderForClient: (clientId: string | null) => void;
   providers: Provider[];
-  handleMoveProvider: (clientId: string, pIndex: number, dir: number) => void;
   handleWeightChange: (clientId: string, providerId: string, weight: number) => void;
   handleRemoveProviderFromClient: (clientId: string, providerId: string) => void;
   showToast: (msg: string, type?: "success" | "error" | "warning" | "info") => void;
@@ -69,7 +68,6 @@ export function ClientConfigTab({
   handleStrategyChange,
   setAddingProviderForClient,
   providers,
-  handleMoveProvider,
   handleWeightChange,
   handleRemoveProviderFromClient,
   showToast,
@@ -86,6 +84,7 @@ export function ClientConfigTab({
   activeProviders
 }: ClientConfigTabProps) {
   const [opencodeDirectList, setOpencodeDirectList] = React.useState<string[]>([]);
+  const [draggingProvider, setDraggingProvider] = React.useState<{ clientId: string; fromIndex: number; overIndex: number } | null>(null);
   
   const fetchOpencodeDirectProviders = async () => {
     try {
@@ -102,6 +101,16 @@ export function ClientConfigTab({
     }
   }, [clientSubTab]);
 
+  React.useEffect(() => {
+    if (!draggingProvider) return;
+    const handlePointerUp = () => {
+      handleDragSortProvider(draggingProvider.clientId, draggingProvider.fromIndex, draggingProvider.overIndex);
+      setDraggingProvider(null);
+    };
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => window.removeEventListener("pointerup", handlePointerUp);
+  }, [draggingProvider]);
+
   const handlePinProvider = (clientId: string, providerId: string) => {
     setClientConfigs(prev => prev.map(c => {
       if (c.client_id === clientId) {
@@ -117,6 +126,18 @@ export function ClientConfigTab({
         return { ...c, direct_provider_id: providerId };
       }
       return c;
+    }));
+  };
+
+  const handleDragSortProvider = (clientId: string, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setClientConfigs(prev => prev.map(c => {
+      if (c.client_id !== clientId) return c;
+      if (fromIndex < 0 || toIndex < 0 || fromIndex >= c.providers.length || toIndex >= c.providers.length) return c;
+      const nextProviders = [...c.providers];
+      const [moved] = nextProviders.splice(fromIndex, 1);
+      nextProviders.splice(toIndex, 0, moved);
+      return { ...c, providers: nextProviders };
     }));
   };
 
@@ -254,7 +275,20 @@ export function ClientConfigTab({
                       const isActive = activeProviders[config.client_id] === p.id;
 
                       return (
-                        <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : (config.strategy === "manual" && !isPinned ? { opacity: 0.4 } : {})}>
+                        <tr
+                          key={pIndex}
+                          onPointerEnter={() => {
+                            if (draggingProvider?.clientId === config.client_id) {
+                              setDraggingProvider(prev => prev ? { ...prev, overIndex: pIndex } : prev);
+                            }
+                          }}
+                          style={{
+                            ...(isGloballyDisabled ? { opacity: 0.5 } : (config.strategy === "manual" && !isPinned ? { opacity: 0.4 } : {})),
+                            cursor: "default",
+                            outline: draggingProvider?.clientId === config.client_id && draggingProvider.overIndex === pIndex ? "2px solid hsl(var(--primary) / 0.45)" : "none",
+                            outlineOffset: "-2px"
+                          }}
+                        >
                           <td style={{ fontWeight: "600" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                               {isActive && (
@@ -278,19 +312,15 @@ export function ClientConfigTab({
                           </td>
                           <td style={{ textAlign: "center" }}>
                             {config.strategy === "priority" && (
-                              <div style={{ display: "inline-flex", gap: "4px", alignItems: "center" }}>
-                                <button
-                                  className="btn-secondary"
-                                  style={{ padding: "2px 4px", fontSize: "0.6rem" }}
-                                  disabled={pIndex === 0 || isGloballyDisabled}
-                                  onClick={() => handleMoveProvider(config.client_id, pIndex, -1)}
-                                >↑</button>
-                                <button
-                                  className="btn-secondary"
-                                  style={{ padding: "2px 4px", fontSize: "0.6rem" }}
-                                  disabled={pIndex === config.providers.length - 1 || isGloballyDisabled}
-                                  onClick={() => handleMoveProvider(config.client_id, pIndex, 1)}
-                                >↓</button>
+                              <div
+                                className="drag-handle"
+                                title="拖动调整优先级"
+                                onPointerDown={(e) => {
+                                  e.preventDefault();
+                                  setDraggingProvider({ clientId: config.client_id, fromIndex: pIndex, overIndex: pIndex });
+                                }}
+                              >
+                                <GripVertical size={16} />
                               </div>
                             )}
                             {config.strategy === "random" && (
@@ -610,7 +640,20 @@ export function ClientConfigTab({
                         const isPinned = cfg.strategy === "manual" && (cfg.manual_provider_id ? p.id === cfg.manual_provider_id : pIndex === 0);
                         const isActive = activeProviders[cfg.client_id] === p.id;
                         return (
-                          <tr key={pIndex} style={isGloballyDisabled ? { opacity: 0.5 } : (cfg.strategy === "manual" && !isPinned ? { opacity: 0.4 } : {})}>
+                          <tr
+                            key={pIndex}
+                            onPointerEnter={() => {
+                              if (draggingProvider?.clientId === cfg.client_id) {
+                                setDraggingProvider(prev => prev ? { ...prev, overIndex: pIndex } : prev);
+                              }
+                            }}
+                            style={{
+                              ...(isGloballyDisabled ? { opacity: 0.5 } : (cfg.strategy === "manual" && !isPinned ? { opacity: 0.4 } : {})),
+                              cursor: "default",
+                              outline: draggingProvider?.clientId === cfg.client_id && draggingProvider.overIndex === pIndex ? "2px solid hsl(var(--primary) / 0.45)" : "none",
+                              outlineOffset: "-2px"
+                            }}
+                          >
                             <td style={{ fontWeight: "600" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                                 {isActive && (
@@ -630,9 +673,15 @@ export function ClientConfigTab({
                             </td>
                             <td style={{ textAlign: "center" }}>
                               {cfg.strategy === "priority" && (
-                                <div style={{ display: "inline-flex", gap: "4px", alignItems: "center" }}>
-                                  <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === 0 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, -1)}>↑</button>
-                                  <button className="btn-secondary" style={{ padding: "2px 4px", fontSize: "0.6rem" }} disabled={pIndex === cfg.providers.length - 1 || isGloballyDisabled} onClick={() => handleMoveProvider(cfg.client_id, pIndex, 1)}>↓</button>
+                                <div
+                                  className="drag-handle"
+                                  title="拖动调整优先级"
+                                  onPointerDown={(e) => {
+                                    e.preventDefault();
+                                    setDraggingProvider({ clientId: cfg.client_id, fromIndex: pIndex, overIndex: pIndex });
+                                  }}
+                                >
+                                  <GripVertical size={16} />
                                 </div>
                               )}
                               {cfg.strategy === "random" && (

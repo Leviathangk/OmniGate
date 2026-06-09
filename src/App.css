@@ -943,6 +943,32 @@ input, textarea {
   color: hsl(var(--secondary));
 }
 
+.drag-handle {
+  width: 30px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid hsl(var(--border-color));
+  background-color: hsl(var(--bg-app));
+  color: hsl(var(--text-muted));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.drag-handle:hover {
+  background-color: hsl(var(--primary) / 0.1);
+  border-color: hsl(var(--primary) / 0.28);
+  color: hsl(var(--primary));
+}
+
+tr:active .drag-handle {
+  cursor: grabbing;
+}
+
 /* Priority list */
 .priority-config-container {
   display: flex;
@@ -1337,19 +1363,6 @@ input, textarea {
   background: linear-gradient(90deg, hsl(var(--border-color) / 0.5) 25%, hsl(var(--border-color)) 37%, hsl(var(--border-color) / 0.5) 63%);
   background-size: 400% 100%;
   animation: skeleton-glow 1.4s ease infinite;
-}
-
-/* Drag list handle */
-.drag-handle {
-  cursor: grab;
-  color: hsl(var(--text-muted));
-  display: flex;
-  align-items: center;
-  font-size: 0.95rem;
-}
-
-.drag-handle:active {
-  cursor: grabbing;
 }
 
 @keyframes spin {

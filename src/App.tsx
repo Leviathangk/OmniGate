@@ -1870,23 +1870,6 @@ function App() {
     }));
   };
 
-  const handleMoveProvider = (clientId: string, index: number, direction: number) => {
-    setClientConfigs(prev => prev.map(c => {
-      if (c.client_id === clientId) {
-        const newProviders = [...c.providers];
-        const newIndex = index + direction;
-        if (newIndex >= 0 && newIndex < newProviders.length) {
-          // Swap elements
-          const temp = newProviders[index];
-          newProviders[index] = newProviders[newIndex];
-          newProviders[newIndex] = temp;
-        }
-        return { ...c, providers: newProviders };
-      }
-      return c;
-    }));
-  };
-
   // 详情：手动添加单个模型
   const handleManualAddModel = async () => {
     if (!selectedProviderForDetails) return;
@@ -2408,7 +2391,6 @@ function App() {
               handleStrategyChange={handleStrategyChange}
               setAddingProviderForClient={setAddingProviderForClient}
               providers={providers}
-              handleMoveProvider={handleMoveProvider}
               handleWeightChange={handleWeightChange}
               handleRemoveProviderFromClient={handleRemoveProviderFromClient}
               showToast={showToast}
