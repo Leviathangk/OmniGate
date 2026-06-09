@@ -723,6 +723,8 @@ function App() {
   // 删除供应商确认 Modal 状态
   const [providerToDelete, setProviderToDelete] = useState<string | null>(null);
   const [deleteWarningMsg, setDeleteWarningMsg] = useState<string>("");
+  const [pendingProtocolChangeProvider, setPendingProtocolChangeProvider] = useState<Provider | null>(null);
+  const [protocolChangeWarningMsg, setProtocolChangeWarningMsg] = useState<string>("");
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -1224,6 +1226,26 @@ function App() {
 
   const handleSaveProviderConnection = async () => {
     if (!editConnectionData) return;
+    const originalProvider = providers.find(p => p.id === editConnectionData.id);
+    const protocolChanged = !!originalProvider && originalProvider.protocol !== editConnectionData.protocol;
+    if (protocolChanged) {
+      try {
+        const usage = await invoke<{ proxy_clients: string[], direct_clients: string[] }>("check_provider_usage", { id: editConnectionData.id });
+        let warningMsg = "";
+        if (usage.proxy_clients.length > 0) {
+          warningMsg += `代理模式: ${usage.proxy_clients.join(", ")}\n`;
+        }
+        if (usage.direct_clients.length > 0) {
+          warningMsg += `直连模式: ${usage.direct_clients.join(", ")}\n`;
+        }
+        setProtocolChangeWarningMsg(warningMsg);
+        setPendingProtocolChangeProvider({ ...editConnectionData });
+      } catch (err) {
+        alert("获取使用情况失败: " + String(err));
+        console.error("检查供应商使用情况失败:", err);
+      }
+      return;
+    }
     try {
       await invoke("update_provider_info", {
         id: editConnectionData.id,
@@ -1238,6 +1260,11 @@ function App() {
       setProviders(prev => prev.map(p => p.id === editConnectionData.id ? editConnectionData : p));
       setShowProviderConnectionModal(false);
       setEditConnectionData(null);
+      if (protocolChanged) {
+        await loadData();
+        showToast("协议已变更，已断开该供应商在客户端配置中的旧引用，模型列表已保留", "warning");
+        return;
+      }
       
       // 同步到所有的 config 客户端（刷新可能的变更）
       const codexCfg = clientConfigs.find(c => c.client_id === "codex");
@@ -1261,6 +1288,32 @@ function App() {
   };
 
   // 打开拉取弹窗并自动拉取（如果缓存为空）
+  const confirmProtocolChangeSave = async () => {
+    if (!pendingProtocolChangeProvider) return;
+    const providerData = pendingProtocolChangeProvider;
+    try {
+      await invoke("update_provider_info", {
+        id: providerData.id,
+        name: providerData.name,
+        apiUrl: providerData.api_url,
+        apiKey: providerData.api_key,
+        protocol: providerData.protocol,
+        billingType: providerData.billing_type || "pay_as_you_go",
+        resetTime: providerData.reset_time || (providerData.billing_type === "subscription" ? "00:00" : "1"),
+      });
+      await invoke("detach_provider_from_clients", { id: providerData.id });
+      setProviders(prev => prev.map(p => p.id === providerData.id ? providerData : p));
+      setShowProviderConnectionModal(false);
+      setEditConnectionData(null);
+      setPendingProtocolChangeProvider(null);
+      setProtocolChangeWarningMsg("");
+      await loadData();
+      showToast("协议已变更，已断开该供应商在客户端配置中的旧引用，模型列表已保留", "warning");
+    } catch (err) {
+      alert("保存连接配置失败: " + err);
+    }
+  };
+
   const handleOpenPullModal = async () => {
     setShowPullModal(true);
     if (selectedProviderForDetails && fetchedModelsForPull.length === 0) {
@@ -2261,6 +2314,74 @@ function App() {
           {/* ============================================================================
               TAB: CLIENT CONFIG (客户端配置)
              ============================================================================ */}
+          {pendingProtocolChangeProvider && (
+            <div className="modal-overlay" style={{ zIndex: 1200 }}>
+              <div className="modal-content-window" style={{ maxWidth: "450px" }} onClick={e => e.stopPropagation()}>
+                <header className="modal-header-section" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px", flexShrink: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "linear-gradient(135deg, hsl(var(--warning)), #f59e0b)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <AlertCircle size={16} style={{ color: "#fff" }} />
+                    </div>
+                    <div>
+                      <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1rem", margin: 0, color: "hsl(var(--warning))" }}>
+                        确认变更协议类型
+                      </h3>
+                      <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontFamily: "monospace" }}>
+                        类似删掉后重新添加
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    className="icon-btn"
+                    style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}
+                    onClick={() => {
+                      setPendingProtocolChangeProvider(null);
+                      setProtocolChangeWarningMsg("");
+                    }}>
+                    <X size={15} />
+                  </button>
+                </header>
+                <div className="modal-body-section" style={{ display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", padding: "14px 20px", flex: 1 }}>
+                  <p style={{ margin: 0, color: "var(--text-primary)", fontSize: "0.85rem", lineHeight: "1.5" }}>
+                    供应商「{pendingProtocolChangeProvider.name}」的协议类型已变更。继续保存后，该供应商会从所有客户端配置中断开旧引用。
+                  </p>
+                  <div className="github-alert warning" style={{ marginTop: "8px", padding: "12px", borderRadius: "8px", backgroundColor: "hsl(var(--warning) / 0.1)", border: "1px solid hsl(var(--warning) / 0.3)" }}>
+                    <div className="alert-title" style={{ color: "hsl(var(--warning))", fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: "0.85rem" }}>
+                      会断开的客户端配置
+                    </div>
+                    {protocolChangeWarningMsg ? (
+                      <pre style={{ margin: 0, padding: 0, background: 'transparent', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-secondary)', fontSize: "0.8rem", fontFamily: "monospace" }}>
+                        {protocolChangeWarningMsg}
+                      </pre>
+                    ) : (
+                      <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: "1.5" }}>
+                        暂无客户端正在引用该供应商。
+                      </p>
+                    )}
+                    <p style={{ marginTop: "8px", marginBottom: 0, fontSize: "0.8rem", color: "hsl(var(--warning))" }}>
+                      代理列表、手动固定、直连写入引用都会被解除。供应商本身和模型列表会保留，后续可按新协议重新添加到客户端。
+                    </p>
+                    {protocolChangeWarningMsg.includes("直连模式") && (
+                      <p style={{ marginTop: "8px", marginBottom: 0, fontSize: "0.8rem", color: "hsl(var(--warning))" }}>
+                        Claude/Codex 如果当前处于直连模式，会清空直连供应商并切换为代理模式；OpenCode 只移除对应直连注册，不切换模式。
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div style={{ marginTop: "24px", display: "flex", gap: "10px", justifyContent: "flex-end", padding: "0 20px 20px 20px" }}>
+                  <button className="btn-secondary" onClick={() => {
+                    setPendingProtocolChangeProvider(null);
+                    setProtocolChangeWarningMsg("");
+                  }}>取消</button>
+                  <button className="btn-primary" style={{ backgroundColor: "hsl(var(--warning))", borderColor: "hsl(var(--warning))" }} onClick={confirmProtocolChangeSave}>
+                    <AlertTriangle size={15} style={{ marginRight: '6px' }}/>
+                    确认变更
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === "client_config" && (
             <ClientConfigTab
               clientSubTab={clientSubTab}

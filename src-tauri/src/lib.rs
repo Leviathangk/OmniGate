@@ -234,6 +234,7 @@ pub fn run() {
             commands::toggle_provider,
             commands::check_provider_usage,
             commands::cascade_delete_provider,
+            commands::detach_provider_from_clients,
             commands::delete_provider,
             commands::get_models,
             commands::add_models_to_provider,

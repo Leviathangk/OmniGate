@@ -682,9 +682,13 @@ impl DbManager {
         let conn = self.conn.lock().unwrap();
         let now = Utc::now().timestamp_millis();
         
-        // Clear direct_provider_id
+        // Clear direct_provider_id. Claude/Codex direct mode cannot stay valid without a direct provider.
         conn.execute(
-            "UPDATE client_configs SET direct_provider_id = NULL, updated_at = ?2 WHERE direct_provider_id = ?1;",
+            "UPDATE client_configs SET direct_provider_id = NULL, operation_mode = 'proxy', updated_at = ?2 WHERE direct_provider_id = ?1 AND client_id <> 'opencode';",
+            rusqlite::params![provider_id, now],
+        ).map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE client_configs SET direct_provider_id = NULL, updated_at = ?2 WHERE direct_provider_id = ?1 AND client_id = 'opencode';",
             rusqlite::params![provider_id, now],
         ).map_err(|e| e.to_string())?;
         
@@ -694,6 +698,33 @@ impl DbManager {
             rusqlite::params![provider_id, now],
         ).map_err(|e| e.to_string())?;
         
+        Ok(())
+    }
+
+    pub fn detach_provider_from_client_configs(&self, provider_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        let now = Utc::now().timestamp_millis();
+
+        conn.execute(
+            "UPDATE client_configs SET direct_provider_id = NULL, operation_mode = 'proxy', updated_at = ?2 WHERE direct_provider_id = ?1 AND client_id <> 'opencode';",
+            rusqlite::params![provider_id, now],
+        ).map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "UPDATE client_configs SET direct_provider_id = NULL, updated_at = ?2 WHERE direct_provider_id = ?1 AND client_id = 'opencode';",
+            rusqlite::params![provider_id, now],
+        ).map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "UPDATE client_configs SET manual_provider_id = NULL, strategy = 'fallback', updated_at = ?2 WHERE manual_provider_id = ?1;",
+            rusqlite::params![provider_id, now],
+        ).map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "DELETE FROM client_config_providers WHERE provider_id = ?1;",
+            rusqlite::params![provider_id],
+        ).map_err(|e| e.to_string())?;
+
         Ok(())
     }
 

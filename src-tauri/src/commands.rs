@@ -228,6 +228,34 @@ pub fn cascade_delete_provider(
 }
 
 #[tauri::command]
+pub fn detach_provider_from_clients(
+    id: String,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let usage = state.db.get_provider_usage(&id)?;
+
+    for client_id in usage.direct_clients {
+        match client_id.as_str() {
+            "opencode" => {
+                let _ = remove_opencode_direct_provider(id.clone(), app_handle.clone());
+            },
+            "claude" => {
+                let _ = restore_claude_config(app_handle.clone());
+            },
+            "codex" => {
+                let _ = restore_codex_config();
+            },
+            _ => {}
+        }
+    }
+
+    state.db.detach_provider_from_client_configs(&id)?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn delete_provider(
     id: String,
     state: tauri::State<'_, crate::AppState>,
