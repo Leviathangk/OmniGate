@@ -2443,6 +2443,8 @@ function App() {
               setGlobalMaxRetryTimeout={setGlobalMaxRetryTimeout}
               fake200Keywords={fake200Keywords}
               setFake200Keywords={setFake200Keywords}
+              darkMode={darkMode}
+              setDarkMode={setDarkMode}
             />
           )}
 

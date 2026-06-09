@@ -16,6 +16,8 @@ interface SettingsTabProps {
   setGlobalMaxRetryTimeout: (val: number | "") => void;
   fake200Keywords: import("../../App").Fake200Keyword[];
   setFake200Keywords: (val: import("../../App").Fake200Keyword[]) => void;
+  darkMode: boolean;
+  setDarkMode: (dark: boolean) => void;
 }
 
 export function SettingsTab({
@@ -31,13 +33,16 @@ export function SettingsTab({
   globalMaxRetryTimeout,
   setGlobalMaxRetryTimeout,
   fake200Keywords,
-  setFake200Keywords
+  setFake200Keywords,
+  darkMode,
+  setDarkMode
 }: SettingsTabProps) {
   return (
     <div>
       <div className="tabs-control-row">
         <button className={`tab-select-btn ${settingsSubTab === "strategy" ? "active" : ""}`} onClick={() => setSettingsSubTab("strategy")}>全局调度策略</button>
         <button className={`tab-select-btn ${settingsSubTab === "proxy" ? "active" : ""}`} onClick={() => setSettingsSubTab("proxy")}>本地网关接管</button>
+        <button className={`tab-select-btn ${settingsSubTab === "theme" ? "active" : ""}`} onClick={() => setSettingsSubTab("theme")}>主题设置</button>
         <button className={`tab-select-btn ${settingsSubTab === "database" ? "active" : ""}`} onClick={() => setSettingsSubTab("database")}>数据库管理</button>
         <button className={`tab-select-btn ${settingsSubTab === "about" ? "active" : ""}`} onClick={() => setSettingsSubTab("about")}>关于</button>
       </div>
@@ -204,6 +209,25 @@ export function SettingsTab({
               value={hijackApiKey} 
               onChange={e => setHijackApiKey(e.target.value)} 
               placeholder="点击右上角随机生成..." 
+            />
+          </div>
+        </div>
+      )}
+
+      {settingsSubTab === "theme" && (
+        <div className="panel-card">
+          <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "8px" }}>主题样式</h3>
+          <p style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: "20px" }}>选择界面的白天或黑夜模式，重启后会自动恢复上次选择。</p>
+
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label>界面主题</label>
+            <CustomSelect
+              value={darkMode ? "dark" : "light"}
+              onChange={(val) => setDarkMode(val === "dark")}
+              options={[
+                { value: "dark", label: "黑夜模式" },
+                { value: "light", label: "白天模式" }
+              ]}
             />
           </div>
         </div>
