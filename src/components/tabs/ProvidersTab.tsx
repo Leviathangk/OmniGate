@@ -35,9 +35,9 @@ export function ProvidersTab({
   handleResetProviderPenalty
 }: ProvidersTabProps) {
   return (
-    <div className="panel-card">
+    <div className="panel-card providers-panel">
       <div className="card-header-row">
-        <h3>已接管的 AI 供应商列表</h3>
+        <h3>已接管的 AI 供应商列表（{providers.length}个）</h3>
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
           <button className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem" }}
             onClick={() => importFileInputRef.current?.click()}>
@@ -52,7 +52,7 @@ export function ProvidersTab({
         </div>
       </div>
 
-      <div className="responsive-table-container">
+      <div className="responsive-table-container providers-table-container">
         <table className="data-table">
           <thead>
             <tr>
@@ -73,7 +73,7 @@ export function ProvidersTab({
               }
               return a.name.localeCompare(b.name);
             }).map(p => (
-              <tr key={p.id}>
+              <tr key={p.id} className={!p.is_active ? "provider-row-disabled" : undefined}>
                 <td style={{ fontWeight: "600" }}>{p.name}</td>
                 <td><code style={{ fontSize: "0.76rem" }}>{p.api_url}</code></td>
                 <td>

@@ -851,6 +851,42 @@ input, textarea {
   background-color: hsl(var(--bg-app));
 }
 
+.providers-panel {
+  height: calc(100vh - 72px - 72px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
+.providers-table-container {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.providers-table-container .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background-color: hsl(var(--bg-app));
+  box-shadow: inset 0 -1px 0 hsl(var(--border-color));
+}
+
+.providers-table-container .provider-row-disabled {
+  background-color: hsl(var(--danger) / 0.055);
+  box-shadow: inset 3px 0 0 hsl(var(--danger) / 0.75);
+  opacity: 0.72;
+}
+
+.providers-table-container .provider-row-disabled:hover {
+  background-color: hsl(var(--danger) / 0.09);
+}
+
+.providers-table-container .provider-row-disabled td {
+  color: hsl(var(--text-muted));
+}
+
 .table-header-meta {
   font-size: 0.78rem;
   color: hsl(var(--text-secondary));
