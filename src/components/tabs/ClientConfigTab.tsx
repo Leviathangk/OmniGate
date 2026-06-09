@@ -397,7 +397,7 @@ export function ClientConfigTab({
                                 options={[
                                   { label: "请选择供应商...", value: "" },
                                   ...providers
-                                    .filter(p => p.protocol === addingProviderProtocol && !config.providers.some(cp => cp.id === p.id))
+                                    .filter(p => p.is_active && p.protocol === addingProviderProtocol && !config.providers.some(cp => cp.id === p.id))
                                     .map(p => ({ label: p.name, value: p.id }))
                                 ]}
                               />
@@ -496,6 +496,7 @@ export function ClientConfigTab({
                       { value: "", label: "-- 请选择供应商 --" },
                       ...providers
                         .filter(p => {
+                          if (!p.is_active) return false;
                           if (config.client_id === "claude") return p.protocol === "claude";
                           if (config.client_id === "codex") return p.protocol === "codex_responses";
                           return true;
@@ -708,7 +709,7 @@ export function ClientConfigTab({
                               options={[
                                 { label: "请选择供应商...", value: "" },
                                 ...providers
-                                  .filter(p => p.protocol === protocol && !cfg.providers.some(cp => cp.id === p.id))
+                                  .filter(p => p.is_active && p.protocol === protocol && !cfg.providers.some(cp => cp.id === p.id))
                                   .map(p => ({ label: p.name, value: p.id }))
                               ]}
                             />
@@ -818,7 +819,9 @@ export function ClientConfigTab({
                       onChange={(val) => setAddingProviderId(val.toString())}
                       options={[
                         { value: "", label: "-- 请选择要添加的直连供应商 --" },
-                        ...providers.map(p => ({ value: p.id, label: p.name }))
+                        ...providers
+                          .filter(p => p.is_active)
+                          .map(p => ({ value: p.id, label: p.name }))
                       ]}
                     />
                   </div>
