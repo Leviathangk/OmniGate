@@ -1,6 +1,7 @@
 use axum::{routing::post, Router};
 use tower_http::cors::{Any, CorsLayer};
 use std::sync::Arc;
+use std::time::Duration;
 use super::balancer::Balancer;
 use super::handlers;
 
@@ -18,7 +19,12 @@ pub fn create_router(
     usage_tx: tokio::sync::mpsc::UnboundedSender<crate::database::UsageStatMessage>,
     app_handle: tauri::AppHandle,
 ) -> Router {
-    let http_client = reqwest::Client::new();
+    let http_client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .tcp_keepalive(Duration::from_secs(30))
+        .build()
+        .expect("Failed to create HTTP client");
 
     let state = Arc::new(AppState {
         balancer,
